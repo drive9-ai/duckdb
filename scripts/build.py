@@ -18,10 +18,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--duckdb", default=os.environ.get("DUCKDB", "duckdb"))
     parser.add_argument("--include", default=os.environ.get("DUCKDB_INCLUDE", "/opt/homebrew/opt/duckdb/include"))
+    parser.add_argument("--static-library", default=os.environ.get("DUCKDB_STATIC_LIBRARY"),
+                        help="matching libduckdb_static.a (required on Linux)")
     args = parser.parse_args()
     includes = Path(args.include).resolve()
     if not (includes / "duckdb/common/file_system.hpp").is_file():
         parser.error("--include must point to the matching DuckDB C++ SDK (or DuckDB src/include)")
+    system = platform.system()
+    if system == "Linux" and (not args.static_library or not Path(args.static_library).is_file()):
+        parser.error("Linux requires --static-library /path/to/matching/libduckdb_static.a")
+    if args.static_library and system != "Linux":
+        parser.error("--static-library is currently supported only on Linux")
     version = subprocess.check_output([args.duckdb, "-csv", "-noheader", "-c", "SELECT version()"], text=True).strip()
     target = subprocess.check_output([args.duckdb, "-csv", "-noheader", "-c", "PRAGMA platform"], text=True).strip()
     build = ROOT / "build"
@@ -39,18 +46,21 @@ def main():
     output = build / "tidbfs.duckdb_extension"
     command = [os.environ.get("CXX", "c++"), "-std=c++17", "-O2", "-DNDEBUG", "-fPIC", "-Wall", "-Wextra",
                "-Wno-unused-parameter", "-Wno-deprecated-declarations", "-I" + str(includes), "-I" + str(deps)]
-    if platform.system() == "Darwin":
+    if system == "Darwin":
         command += ["-dynamiclib", "-undefined", "dynamic_lookup"]
-    elif platform.system() == "Linux":
-        # Official Linux CLIs do not export RTTI for DuckDB base classes.
-        # macOS must retain RTTI for libc++ exception matching across dylibs.
-        command += ["-shared", "-fno-rtti"]
+    elif system == "Linux":
+        # Match DuckDB's EXTENSION_STATIC_BUILD: official Linux CLIs do not
+        # export all C++ filesystem symbols. Hide the linked DuckDB copy.
+        command += ["-shared", "-fvisibility=hidden", "-ffunction-sections", "-fdata-sections"]
         if target.endswith("_gcc4"):
             command += ["-D_GLIBCXX_USE_CXX11_ABI=0"]
     else:
         parser.error("This build script supports macOS and Linux")
     command += shlex.split(os.environ.get("CXXFLAGS", ""))
-    command += [str(ROOT / "src/tidbfs_extension.cpp"), "-o", str(output), "-lcurl"]
+    command += [str(ROOT / "src/tidbfs_extension.cpp"), "-o", str(output)]
+    if system == "Linux":
+        command += [str(Path(args.static_library).resolve()), "-Wl,--gc-sections", "-Wl,--exclude-libs,ALL", "-pthread", "-ldl"]
+    command += ["-lcurl"]
     subprocess.run(command, check=True)
     # DuckDB v1.4.x scripts/append_metadata.cmake: 8 reversed 32-byte fields,
     # then 256 bytes reserved for a signature. The local build is unsigned.

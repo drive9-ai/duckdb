@@ -24,6 +24,11 @@ duckdb -unsigned
 For another matching SDK/CLI, set `DUCKDB_INCLUDE` and `DUCKDB`; `CXX` and
 `CXXFLAGS` are also supported. The script downloads nlohmann/json 3.11.3 with a
 pinned SHA-256, creates the DuckDB extension metadata, and verifies `LOAD`.
+On Linux, also set `DUCKDB_STATIC_LIBRARY` to the matching `libduckdb_static.a`
+from DuckDB's release SDK. Linux builds statically link DuckDB, following its
+extension distribution model, because the official CLI does not export every
+C++ filesystem symbol. The [CI workflow](.github/workflows/ci.yml) shows the
+complete Linux setup with checksummed DuckDB binaries.
 `CMakeLists.txt` and `extension_config.cmake` also provide an entry point for a
 DuckDB source build; the installed-SDK build is the tested local workflow.
 
