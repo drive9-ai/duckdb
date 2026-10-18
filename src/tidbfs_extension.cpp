@@ -168,7 +168,8 @@ Config ReadConfig(optional_ptr<FileOpener> opener, const string &path) {
 	if (!match.HasMatch()) {
 		throw IOException("Create a tidbfs secret with ENDPOINT and TOKEN before opening files");
 	}
-	auto &secret = dynamic_cast<const KeyValueSecret &>(match.GetSecret());
+	// The tidbfs secret factory and deserializer both produce KeyValueSecret.
+	auto &secret = static_cast<const KeyValueSecret &>(match.GetSecret());
 	Value endpoint, token, read_ahead;
 	if (!secret.TryGetValue("endpoint", endpoint) || !secret.TryGetValue("token", token)) {
 		throw IOException("tidbfs secret is missing ENDPOINT or TOKEN");
@@ -443,7 +444,7 @@ public:
 			handle->size = version->size;
 			handle->mtime = version->mtime;
 			handle->etag = version->etag;
-			return std::move(handle);
+			return handle;
 		}
 		auto r = handle->http.Request(handle->Endpoint(), handle->config.token, true, {}, 0);
 		if (r.status == 404 && flags.ReturnNullIfNotExists()) {
@@ -468,7 +469,7 @@ public:
 		version->mtime = handle->mtime;
 		version->etag = handle->etag;
 		version->initialized = true;
-		return std::move(handle);
+		return handle;
 	}
 	void Read(FileHandle &base, void *buffer, int64_t count, idx_t offset) override {
 		auto &h = base.Cast<TiDBHandle>();
@@ -598,7 +599,7 @@ unique_ptr<BaseSecret> CreateTiDBSecret(ClientContext &, CreateSecretInput &inpu
 	}
 	CheckEndpoint(secret->secret_map["endpoint"].GetValue<string>());
 	secret->redact_keys.insert("token");
-	return std::move(secret);
+	return secret;
 }
 
 } // namespace

@@ -37,12 +37,14 @@ def main():
     if hashlib.sha256(header.read_bytes()).hexdigest() != JSON_SHA256:
         raise RuntimeError("JSON dependency checksum mismatch")
     output = build / "tidbfs.duckdb_extension"
-    command = [os.environ.get("CXX", "c++"), "-std=c++17", "-O2", "-fPIC", "-Wall", "-Wextra",
+    command = [os.environ.get("CXX", "c++"), "-std=c++17", "-O2", "-DNDEBUG", "-fPIC", "-Wall", "-Wextra",
                "-Wno-unused-parameter", "-Wno-deprecated-declarations", "-I" + str(includes), "-I" + str(deps)]
     if platform.system() == "Darwin":
         command += ["-dynamiclib", "-undefined", "dynamic_lookup"]
     elif platform.system() == "Linux":
-        command += ["-shared"]
+        # Official Linux CLIs do not export RTTI for DuckDB base classes.
+        # macOS must retain RTTI for libc++ exception matching across dylibs.
+        command += ["-shared", "-fno-rtti"]
         if target.endswith("_gcc4"):
             command += ["-D_GLIBCXX_USE_CXX11_ABI=0"]
     else:
