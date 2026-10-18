@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-extension:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      DUCKDB_VERSION: v1.4.2
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ libcurl4-openssl-dev unzip
+      - name: Install matching DuckDB CLI and C++ headers
+        run: |
+          mkdir -p "$RUNNER_TEMP/duckdb/bin" "$RUNNER_TEMP/duckdb/source"
+          curl -fsSL --retry 3 "https://github.com/duckdb/duckdb/releases/download/${DUCKDB_VERSION}/duckdb_cli-linux-amd64.zip" -o "$RUNNER_TEMP/duckdb/cli.zip"
+          printf '%s  %s\n' fae3ba93eedf20b08bca4b23aeac1ba94c446f1c10d029c193e2fc4b4e0bc1bc "$RUNNER_TEMP/duckdb/cli.zip" | sha256sum --check
+          unzip -q "$RUNNER_TEMP/duckdb/cli.zip" -d "$RUNNER_TEMP/duckdb/bin"
+          chmod +x "$RUNNER_TEMP/duckdb/bin/duckdb"
+          curl -fsSL --retry 3 "https://github.com/duckdb/duckdb/archive/refs/tags/${DUCKDB_VERSION}.tar.gz" -o "$RUNNER_TEMP/duckdb/source.tar.gz"
+          tar -xzf "$RUNNER_TEMP/duckdb/source.tar.gz" --strip-components=1 -C "$RUNNER_TEMP/duckdb/source"
+          printf 'DUCKDB=%s\nDUCKDB_INCLUDE=%s\n' "$RUNNER_TEMP/duckdb/bin/duckdb" "$RUNNER_TEMP/duckdb/source/src/include" >> "$GITHUB_ENV"
+      - name: Build, load, and test the native extension
+        run: make test
