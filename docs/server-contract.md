@@ -89,3 +89,10 @@ The included `scripts/smoke.py` verifies the actual TiDB-backed inline path usin
 a disposable local filesystem with `DRIVE9_INLINE_THRESHOLD=16777216`. The
 ordinary `make test` suite uses an instrumented HTTP fixture and needs no server
 or credentials. Both execute the real DuckDB CLI.
+
+## Native databases
+
+`tidbfs+db:///` uses a separate, opt-in `/v1/duckdb` protocol. The analytical
+range/multipart contract above does not make ordinary files safe native database
+storage. See [native database protocol](native-database.md) for fencing, durable
+pages, lifecycle, server gates and limits.

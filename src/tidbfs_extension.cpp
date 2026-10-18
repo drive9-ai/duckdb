@@ -11,6 +11,12 @@
 #include "duckdb/main/secret/secret_manager.hpp"
 #include "json.hpp"
 
+#include "duckdb/common/types/blob.hpp"
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <memory>
+#include <thread>
 #include <curl/curl.h>
 #include <fnmatch.h>
 
@@ -1117,10 +1123,13 @@ public:
 	}
 };
 
+#include "native_database.hpp"
+
 unique_ptr<BaseSecret> CreateTiDBSecret(ClientContext &, CreateSecretInput &input) {
 	auto scope = input.scope;
 	if (scope.empty()) {
 		scope.push_back("tidbfs://");
+		scope.push_back("tidbfs+db://");
 	}
 	auto secret = make_uniq<KeyValueSecret>(scope, input.type, input.provider, input.name);
 	if (!secret->TrySetValue("endpoint", input) || !secret->TrySetValue("token", input)) {
@@ -1157,6 +1166,7 @@ void LoadTiDBFS(ExtensionLoader &loader) {
 	    "tidbfs_read_ahead", "Bytes to fetch ahead on small reads (0 disables prefetch, max 1 MiB)",
 	    LogicalType::BIGINT, Value::BIGINT(65536));
 	FileSystem::GetFileSystem(loader.GetDatabaseInstance()).RegisterSubSystem(make_uniq<TiDBFileSystem>());
+	FileSystem::GetFileSystem(loader.GetDatabaseInstance()).RegisterSubSystem(make_uniq<TiDBDatabaseFileSystem>());
 }
 
 } // namespace duckdb

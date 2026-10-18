@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.15)
 project(tidbfs)
 find_package(CURL REQUIRED)
+find_package(Threads REQUIRED)
 set(CMAKE_CXX_STANDARD 17)
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/deps")
 file(DOWNLOAD
@@ -11,4 +12,4 @@ file(DOWNLOAD
 include_directories("${CMAKE_CURRENT_BINARY_DIR}/deps")
 set(SOURCES src/tidbfs_extension.cpp)
 build_loadable_extension(tidbfs "" ${SOURCES})
-target_link_libraries(tidbfs_loadable_extension CURL::libcurl)
+target_link_libraries(tidbfs_loadable_extension CURL::libcurl Threads::Threads)

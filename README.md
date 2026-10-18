@@ -3,7 +3,7 @@
 [![CI](https://github.com/siddontang/duckdb-tidbfs/actions/workflows/ci.yml/badge.svg)](https://github.com/siddontang/duckdb-tidbfs/actions/workflows/ci.yml)
 
 `tidbfs` is a C++ DuckDB filesystem extension for reading and writing analytics files over the
-TiDB Filesystem HTTP data plane. It works in the DuckDB CLI and does not require
+TiDB Filesystem HTTP data plane, with experimental native `.duckdb` storage. It works in the DuckDB CLI and does not require
 Python, fsspec, FUSE, or downloading whole Parquet files. Python is used only by
 the build and test scripts.
 
@@ -78,7 +78,8 @@ The build is unsigned and is not published to DuckDB's extension repository.
 | `COPY ... USE_TMP_FILE true` | Supported through server rename |
 | `EXPORT DATABASE` / `IMPORT DATABASE` | Supported; data and SQL scripts are remote |
 | SQL DDL, DML and transactions in a local/in-memory database | Normal DuckDB behavior; import/export connects it to remote files |
-| Writable `ATTACH 'tidbfs:///database.duckdb'` | Rejected: requires distributed locks and durable database/WAL I/O |
+| Writable `ATTACH 'tidbfs+db:///database.duckdb'` | Experimental: native database, WAL, checkpoint and recovery over TiDB pages |
+| Writable native database on ordinary `tidbfs:///` | Rejected; use the isolated database namespace |
 | Multi-file atomic export, rollback of external files | Not provided |
 
 Writable handles stage bytes in a private, unlinked local temporary file. This
@@ -100,7 +101,27 @@ revisions fail with HTTP 409. This is optimistic publication, not a lifetime fil
 lock. The current write API compares revisions, not inode identity: a concurrent
 delete/recreate with the same revision is not fenced. Do not use concurrent
 namespace replacement as a database locking protocol. See the
-[compatibility roadmap](docs/compatibility.md) for the remaining native database requirements.
+[compatibility matrix](docs/compatibility.md) for the implemented native mode and remaining gaps.
+
+## Native database mode (experimental)
+
+`tidbfs+db:///warehouse.duckdb` runs DuckDB's own storage engine over remote
+64 KiB TiDB pages. The server checks a renewable lease inside every storage
+transaction. Database and WAL writes are durable on acknowledgement; no whole
+file upload is required at COMMIT. Single-writer exclusion, shared readers,
+checkpoint/reopen, client-crash recovery and remote spill have live tests.
+
+Enable `DRIVE9_EXPERIMENTAL_DUCKDB=1` on a **local-provider** fs server and use a
+secret scoped to `tidbfs+db:///`. The initial implementation has a 1 GiB limit
+per database and is not integrated with production fs backup, billing or tenant
+deletion. This is progress toward compatibility, not a 100% compatibility claim.
+See [setup, protocol and live tests](docs/native-database.md).
+
+The value is twofold: analytical files let DuckDB's pruning reach remote byte
+ranges, while native mode lets a short-lived process leave durable SQL state
+that another process can recover. Queries still run locally in DuckDB. The
+project does not turn DuckDB into a multi-writer distributed SQL engine, and
+native-mode performance/cost still needs measurement and optimization.
 
 ## Read-path optimizations
 
@@ -173,9 +194,10 @@ is an explicit test setting; the server's default remains unchanged.
 
 ## Boundaries
 
-This version supports **read/write analytics files**, not writable native
-`.duckdb` database storage, WAL/locking, or extent-layout files. No dataset-wide
-transaction/snapshot is implied. Inline changes
+The analytical `tidbfs:///` path supports **read/write analytics files** and
+rejects native database locks and extent-layout files. Experimental native
+storage uses the separate `tidbfs+db:///` protocol above. No dataset-wide
+transaction/snapshot is implied for analytical files. Inline changes
 fail with HTTP 412; single-object reads can finish from their pinned immutable
 generation, or fail if that generation is garbage-collected. Query-level
 caching does not provide a transaction-wide snapshot across SQL statements.
