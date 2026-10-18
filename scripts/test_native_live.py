@@ -46,7 +46,7 @@ def main():
     parser.add_argument('--fs-source', help='Also run relevant Go tests in this fs checkout')
     parser.add_argument('--skip-restart', action='store_true')
     parser.add_argument('--log-dir', default=str(ROOT / 'build/native-live'))
-    parser.add_argument('--minio-server', help='Use a disposable MinIO S3 backend and enable object fault tests (requires boto3)')
+    parser.add_argument('--rustfs-server', help='Use a disposable RustFS S3 backend and enable object fault tests (requires boto3)')
     parser.add_argument('tests', nargs='*', help='Optional unittest names from native_smoke.py')
     args = parser.parse_args()
     processes, logs, proxies = [], [], []
@@ -80,30 +80,34 @@ def main():
                        DRIVE9_LOCAL_DSN=f'root@tcp(127.0.0.1:{sql_port})/tidbfs_live?parseTime=true',
                        DRIVE9_S3_DIR=tmp + '/objects', DRIVE9_TOKEN_SIGNING_KEY=secrets.token_hex(32),
                        DRIVE9_MASTER_KEY=secrets.token_hex(32))
-            if args.minio_server:
+            if args.rustfs_server:
                 import boto3
-                minio_port = port()
-                access, secret = secrets.token_hex(12), secrets.token_hex(24)
-                minio_env = dict(env, MINIO_ROOT_USER=access, MINIO_ROOT_PASSWORD=secret,
-                                 MINIO_BROWSER='off')
-                launch([str(Path(args.minio_server).resolve()), 'server', tmp + '/minio',
-                        '--address', f'127.0.0.1:{minio_port}'], 'minio', minio_env)
-                minio_url = f'http://127.0.0.1:{minio_port}'
-                def minio_ready():
-                    with urllib.request.urlopen(minio_url + '/minio/health/live', timeout=2) as response:
-                        return response.read()
-                wait(minio_ready)
-                s3 = boto3.client('s3', endpoint_url=minio_url, region_name='us-east-1',
-                                  aws_access_key_id=access, aws_secret_access_key=secret)
+                from botocore.config import Config
+                rustfs_port = port()
+                access, secret = secrets.token_hex(12).upper(), secrets.token_hex(24)
+                # Do not inherit an operator's storage, IAM, KMS or telemetry
+                # settings into this loopback-only disposable object server.
+                rustfs_env = {k: v for k, v in env.items() if not k.startswith(('RUSTFS_', 'MINIO_', 'OTEL_'))}
+                rustfs_env.update(RUSTFS_ACCESS_KEY=access, RUSTFS_SECRET_KEY=secret,
+                                  RUSTFS_CONSOLE_ENABLE='false', RUSTFS_REGION='us-east-1')
+                Path(tmp, 'rustfs').mkdir()
+                launch([str(Path(args.rustfs_server).resolve()), 'server', tmp + '/rustfs',
+                        '--address', f'127.0.0.1:{rustfs_port}'], 'rustfs', rustfs_env)
+                rustfs_url = f'http://127.0.0.1:{rustfs_port}'
+                s3 = boto3.client('s3', endpoint_url=rustfs_url, region_name='us-east-1',
+                                  aws_access_key_id=access, aws_secret_access_key=secret,
+                                  config=Config(connect_timeout=2, read_timeout=2,
+                                                retries={'max_attempts': 0}, s3={'addressing_style': 'path'}))
+                wait(s3.list_buckets)
                 s3.create_bucket(Bucket='tidbfs-test')
-                proxy = FaultProxy(minio_url, objects=True)
+                proxy = FaultProxy(rustfs_url, objects=True)
                 proxies.append(proxy)
                 env.update(DRIVE9_S3_BUCKET='tidbfs-test', DRIVE9_S3_ENDPOINT=proxy.url,
                            DRIVE9_S3_REGION='us-east-1', DRIVE9_S3_FORCE_PATH_STYLE='true',
                            DRIVE9_S3_ACCESS_KEY_ID=access, DRIVE9_S3_SECRET_ACCESS_KEY=secret,
                            DRIVE9_EXTENT_ALLOW_STATIC_CREDENTIALS='1',
                            TIDBFS_FAULT_PROXY=proxy.url, TIDBFS_FAULT_TOKEN=proxy.token)
-                print('Disposable MinIO S3 backend ready', flush=True)
+                print('Disposable RustFS S3 backend ready', flush=True)
             server_command = [str(Path(args.fs_server).resolve())]
             server = launch(server_command, 'server', env)
             endpoint = f'http://127.0.0.1:{fs_port}'

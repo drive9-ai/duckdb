@@ -25,7 +25,7 @@ See [the native adapter](native-database.md) for the exact failure scenarios.
 Server-side range validators, binary projections, shared-schema isolation and
 existing extent regressions run with `--fs-source`.
 Public CI runs six native compatibility cases and four transient S3 fault cases
-on the public upstream server and disposable MinIO;
+on the public upstream server and disposable RustFS;
 the complete recovery suite runs against current `tidbcloud/fs`, whose checkout
 is private. The harness defaults to the complete suite, including failure tests.
 
@@ -53,7 +53,7 @@ is private. The harness defaults to the complete suite, including failure tests.
   them; there is no new server-side temporary-file reclamation policy.
 - Native URI globs and automatic conversion of inline/object files into extent
   databases are unsupported. Use analytical globs and explicit export/import.
-- S3 faults are tested using real MinIO and a loopback fault proxy: upload and
+- S3 faults are tested using real RustFS and a loopback fault proxy: upload and
   download 503, lost upload response, truncated download, persistent upload
   failure, and checkpoint crash after upload. AWS/GCS production credentials,
   service-specific failures, full checkpoint-boundary sweeps, SQLLogicTest and

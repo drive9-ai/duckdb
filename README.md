@@ -151,7 +151,7 @@ already delivered to the server or fence a client that ignores locks.
 The initial write policy calls existing VFS fsync
 after each write before acknowledging it. This favors correctness over batching.
 See [setup, recovery behavior and live tests](docs/native-database.md).
-The live harness includes disposable MinIO tests for upload/download failures,
+The live harness includes disposable RustFS tests for upload/download failures,
 lost responses, truncated reads, failed COMMIT and checkpoint crash recovery.
 
 The value is twofold: analytical files let DuckDB's pruning reach remote byte

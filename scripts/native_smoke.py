@@ -284,7 +284,7 @@ class NativeDatabaseTests(unittest.TestCase):
     def object_fault(self, rule=None):
         endpoint = os.environ.get('TIDBFS_FAULT_PROXY')
         if not endpoint:
-            self.skipTest('Requires --minio-server and its disposable fault proxy')
+            self.skipTest('Requires --rustfs-server and its disposable fault proxy')
         request = urllib.request.Request(endpoint + '/_tidbfs_fault',
                     data=json.dumps(rule).encode() if rule is not None else None,
                     headers={'Authorization': 'Bearer ' + os.environ['TIDBFS_FAULT_TOKEN']})

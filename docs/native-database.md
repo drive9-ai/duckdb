@@ -118,7 +118,8 @@ analytical reads/writes of extent Parquet; and client/server restart recovery.
 Bridge tests exercise binary data, holes, truncate/regrow, rename replacement,
 unlink with open handles, cross-session locks and fail-closed deadlines.
 
-Public GitHub CI builds a pinned public drive9 server and MinIO, then runs bridge
+Public GitHub CI builds a pinned public drive9 server and downloads a pinned,
+checksum-verified RustFS release, then runs bridge
 conformance, six native compatibility cases and four transient S3 fault cases.
 The full crash, missed-heartbeat and restart suite targets current `tidbcloud/fs`.
 That server repository is private; its newer stale-session scheduling is not
@@ -127,21 +128,21 @@ enabled by default in this harness; CI lists its narrower selection explicitly.
 
 ## Object-store fault validation
 
-To exercise the S3 protocol with an isolated MinIO service and network fault
-proxy, build a pinned upstream release and add `--minio-server`:
+To exercise the S3 protocol with an isolated RustFS service and network fault
+proxy, download the checksum-verified RustFS 1.0.3 release and add `--rustfs-server`:
 
 ```sh
 python3 -m pip install pymysql==1.1.1 boto3==1.42.97
-GOBIN="$PWD/build" go install github.com/minio/minio@RELEASE.2025-09-07T16-13-09Z
+python3 scripts/download_rustfs.py
 python3 scripts/test_native_live.py \
   --tidb-server /path/to/tidb-server \
   --fs-server /path/to/drive9-server \
-  --minio-server "$PWD/build/minio"
+  --rustfs-server "$PWD/build/rustfs"
 ```
 
 Every service binds to loopback, uses temporary data, and receives fresh test
 credentials. Static extent credentials are enabled only for that disposable
-server. No production bucket or credential is needed. Without `--minio-server`,
+server. No production bucket or credential is needed. Without `--rustfs-server`,
 the six object fault cases are explicitly skipped; the native cases still run.
 
 | Fault | Required result |
@@ -160,7 +161,7 @@ as a rejected COMMIT. Bridge conformance also deliberately demonstrates that a
 client opening without a lock can write a file held by a cooperating writer.
 This documents the advisory-lock boundary; it is not a supported database usage.
 
-TiDB unistore and local MinIO validate ordering and S3 protocol fault behavior.
+TiDB unistore and local RustFS validate ordering and S3 protocol fault behavior.
 They do not establish AWS/GCS IAM or credential rotation, production service
 durability, TiKV power-loss durability, arbitrary network-partition safety, or
 full DuckDB/POSIX compatibility. Existing ordinary
