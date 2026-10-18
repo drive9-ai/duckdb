@@ -15,7 +15,8 @@ server read-path changes before using this extension against an existing service
 * `X-Dat9-IsDir`, `X-Dat9-Content-Layout`, and optionally `X-Dat9-Mtime`
   (Unix seconds).
 
-The extension rejects missing/weak validators and extent-layout files. Metadata
+The ordinary byte-range path rejects missing/weak validators. Extent-layout
+files route to the existing extent runtime instead. Metadata
 is cached only within the current DuckDB query, with endpoint and credentials
 included in the cache key.
 
@@ -92,9 +93,11 @@ or credentials. Both execute the real DuckDB CLI.
 
 ## Native databases
 
-`tidbfs+db:///` adapts the generic, opt-in `/v1/file-volumes` API. The plugin
-selects a volume and maps main/WAL/temp files into ordinary paths; the server
-only implements file storage and ownership. The analytical
-range/multipart contract above does not make ordinary files safe native database
-storage. See [native database adapter](native-database.md) for fencing, durable
-pages, lifecycle, server gates and limits.
+`tidbfs+db:///` adapts the existing `/v1/extent/meta` and `/v1/data-credential`
+interfaces through the pinned drive9 extent client. File bytes use the existing
+object-block data plane. The path is the ordinary filesystem path; there are no
+additional storage tables or endpoints. `/v1/fs` remains the interface for
+ordinary metadata, conditional ranges, revision-checked uploads and namespace
+operations. Its existing extent hint routes analytical file I/O to the adapter.
+See [native extent adapter](native-database.md) for advisory locks, fsync,
+recovery and the remaining compatibility boundaries.

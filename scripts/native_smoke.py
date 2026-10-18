@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Live conformance tests; requires the generic leased file-volume API and TiDB.
+"""Live conformance tests; uses the existing extent API and TiDB.
 
 Uses fresh database names. Never runs against or modifies an existing database.
-The crash/heartbeat checks deliberately span the 30-second server lease.
+The crash/heartbeat checks deliberately span the 60-second extent session.
 """
 import os
 import json
@@ -17,6 +17,7 @@ import tempfile
 import time
 import unittest
 import uuid
+import signal
 
 ROOT = Path(__file__).resolve().parents[1]
 ENDPOINT = os.environ['DRIVE9_BASE']
@@ -85,6 +86,16 @@ class NativeDatabaseTests(unittest.TestCase):
         self.assertEqual(child.wait(timeout=120), 0,
                          child.stderr.read().replace(TOKEN, '<redacted>'))
 
+    def recover(self, statement):
+        deadline = time.monotonic() + 150
+        while True:
+            try:
+                return sql(statement)
+            except RuntimeError as error:
+                if 'locked' not in str(error) or time.monotonic() >= deadline:
+                    raise
+                time.sleep(1)
+
     def test_catalog_transactions_checkpoint_reopen(self):
         sql(self.attach + """
             CREATE SCHEMA app;
@@ -103,6 +114,16 @@ class NativeDatabaseTests(unittest.TestCase):
         sql(self.attach + "BEGIN; DELETE FROM app.items WHERE id=0; UPDATE app.items SET value='updated' WHERE id=1; COMMIT; CHECKPOINT;")
         self.assertTrue(sql(self.readonly + "SELECT count(*),sum(id),count(*) FILTER(WHERE value='updated') FROM app.items;").endswith('10000,50005001,1'))
 
+    def test_multiple_databases_and_arbitrary_filename(self):
+        other = self.uri.replace('.duckdb', '.bin')
+        result = sql(self.attach + f"ATTACH {quote(other)} AS other; "
+                     "CREATE TABLE remote.a AS SELECT 42 n; "
+                     "CREATE TABLE other.b AS SELECT 2 n; "
+                     "CHECKPOINT remote; CHECKPOINT other; "
+                     "SELECT a.n+b.n FROM remote.a a, other.b b; DETACH other;")
+        self.assertTrue(result.endswith('44'), result)
+        self.assertTrue(sql(f"ATTACH {quote(other)} AS other (READ_ONLY); SELECT n FROM other.b;").endswith('2'))
+
     def test_wal_recovers_committed_not_uncommitted_after_sigkill(self):
         child = self.hold(self.attach + """
             SET checkpoint_threshold='1GB';
@@ -114,15 +135,7 @@ class NativeDatabaseTests(unittest.TestCase):
         child.wait(timeout=15)
         # A crashed process cannot release its lease. Let the actual server
         # clock expire it, without touching any metadata directly.
-        deadline = time.monotonic() + 45
-        while True:
-            try:
-                result = sql(self.attach + 'SELECT count(*),sum(id) FROM recovered; CHECKPOINT;')
-                break
-            except RuntimeError as error:
-                if 'locked' not in str(error) or time.monotonic() >= deadline:
-                    raise
-                time.sleep(1)
+        result = self.recover(self.attach + 'SELECT count(*),sum(id) FROM recovered; CHECKPOINT;')
         self.assertTrue(result.endswith('10000,49995000'), result)
         self.assertTrue(sql(self.readonly + 'SELECT max(id) FROM recovered;').endswith('9999'))
 
@@ -131,7 +144,7 @@ class NativeDatabaseTests(unittest.TestCase):
         self.assertIn('locked', sql(self.attach + 'SELECT * FROM t;', fail=True))
         self.assertIn('locked', sql(self.readonly + 'SELECT * FROM t;', fail=True))
         # More than one full lease: the heartbeat must keep the writer alive.
-        time.sleep(32)
+        time.sleep(65)
         self.assertIn('locked', sql(self.attach + 'SELECT * FROM t;', fail=True))
         self.finish(writer)
         reader1 = self.hold(self.readonly + 'SELECT * FROM t;')
@@ -151,9 +164,10 @@ class NativeDatabaseTests(unittest.TestCase):
 
             def do_POST(self):
                 body = self.rfile.read(int(self.headers['Content-Length']))
-                op = json.loads(body).get('op')
+                op = self.headers.get('X-Drive9-Extent-Op')
                 request = urllib.request.Request(ENDPOINT + self.path, data=body, method='POST',
-                    headers={'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json'})
+                    headers={'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json',
+                             'X-Drive9-Extent-Op': op or ''})
                 try:
                     response = urllib.request.urlopen(request, timeout=120)
                 except urllib.error.HTTPError as error:
@@ -188,8 +202,42 @@ class NativeDatabaseTests(unittest.TestCase):
             thread.join()
         # Either transaction outcome is legal after lost acknowledgement;
         # duplication or corruption is not. The application must reconcile.
-        result = sql(self.attach + 'SELECT count(*) FROM uncertain; CHECKPOINT;')
+        result = self.recover(self.attach + 'SELECT count(*) FROM uncertain; CHECKPOINT;')
         self.assertIn(result.splitlines()[-1], ('0', '1'))
+
+    def test_expired_paused_writer_cannot_resume_writes(self):
+        writer = self.hold(self.attach + 'CREATE TABLE paused AS SELECT 1 n; CHECKPOINT;')
+        writer.send_signal(signal.SIGSTOP)
+        try:
+            # This is an actual missed-heartbeat interval, without editing DB
+            # rows or adding a server fault-injection endpoint.
+            time.sleep(65)
+            self.recover(self.attach + 'INSERT INTO paused VALUES (2); CHECKPOINT;')
+        finally:
+            writer.send_signal(signal.SIGCONT)
+        writer.stdin.write('INSERT INTO paused VALUES (99);\n')
+        writer.stdin.flush()
+        writer.stdin.close()
+        self.assertNotEqual(writer.wait(timeout=90), 0)
+        self.assertIn('session failed or expired', writer.stderr.read())
+        self.assertTrue(sql(self.readonly + 'SELECT sum(n) FROM paused;').endswith('3'))
+
+    def test_extent_files_share_the_normal_namespace(self):
+        # No hidden /data mapping and no new file tables: normal /v1/fs sees
+        # the database, and ordinary tidbfs analytical readers read extent files.
+        sql(self.attach + 'CREATE TABLE visible AS SELECT 42 n; CHECKPOINT;')
+        path = self.uri[len('tidbfs+db://'):]
+        request = urllib.request.Request(ENDPOINT + '/v1/fs' + path, method='HEAD',
+                                         headers={'Authorization': 'Bearer ' + TOKEN})
+        with urllib.request.urlopen(request, timeout=10) as response:
+            self.assertEqual(response.headers['X-Dat9-Content-Layout'], 'extent')
+            self.assertGreater(int(response.headers['Content-Length']), 0)
+        parquet = self.uri + '.parquet'
+        sql(f"COPY (SELECT 42 n) TO {quote(parquet)} (FORMAT PARQUET);")
+        ordinary = parquet.replace('tidbfs+db://', 'tidbfs://', 1)
+        self.assertTrue(sql(f"SELECT n FROM read_parquet({quote(ordinary)});").endswith('42'))
+        sql(f"COPY (SELECT 43 n) TO {quote(ordinary)} (FORMAT PARQUET, USE_TMP_FILE false);")
+        self.assertTrue(sql(f"SELECT n FROM read_parquet({quote(ordinary)});").endswith('43'))
 
     def test_external_sort_with_remote_temporary_files(self):
         result = sql(self.attach + f"""

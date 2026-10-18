@@ -1,101 +1,58 @@
 # DuckDB compatibility
 
-The extension has two storage modes. SQL execution, catalog management, WAL
-recovery and transaction semantics remain inside unmodified DuckDB 1.4.2.
+SQL, catalog, WAL, recovery and transaction execution remain inside unmodified
+DuckDB 1.4.2. This is an experimental filesystem integration, not a complete
+DuckDB or POSIX compatibility claim.
 
-| Workflow | `tidbfs:///` analytical files | `tidbfs+db:///name.duckdb` database files |
+| Workflow | `tidbfs:///` | `tidbfs+db:///` |
 | --- | --- | --- |
-| Parquet/CSV/JSON, Hive/globs, partition COPY | Supported | Use analytical mode |
-| EXPORT/IMPORT DATABASE | Supported | Operates on the attached native database through DuckDB |
-| Writable native ATTACH, catalog and DML | Deliberately rejected | Experimental; real TiDB/CLI tests |
-| COMMIT, ROLLBACK, checkpoint and reopen | Local/in-memory DuckDB engine | Native DuckDB WAL and pages persist remotely |
-| One writer process, or multiple read-only processes | No database lifetime lock | Server-clock leases, renewal and transactional fencing |
-| Remote temporary files / external sorting | Whole-file publication | Positional page I/O and temporary-directory cleanup |
-| Filesystem mutations roll back with SQL | No | DuckDB's native database transactions do; arbitrary file operations do not |
-| Production service integration | Requires range API changes | Disabled by default; local-provider opt-in only |
-
-## Native mode: implemented guarantees
-
-Every acknowledged write commits its bytes and file size in a TiDB transaction.
-The database and WAL share a lease. `FileSync` checks that lease after preceding
-writes; it never merely flushes a local staging file. A 256 KiB database block
-updates four 64 KiB pages, rather than uploading the complete database. Requests
-are bounded to 1 MiB of binary data, encoded as base64 in this initial protocol.
-
-A database row serializes all operations. Lease checks use current reads after
-locking that row: a transaction snapshot taken before a lock wait cannot admit
-a second owner. Expired tokens cannot renew or mutate; token hashes, rather
-than usable lease tokens, are stored in the database. Random file IDs preserve
-open-handle identity through file replacement and unlink. Unlinked inodes remain
-until the final lease ends. Abandoned `.tmp` files are reclaimed when no active
-lease remains. Ordinary `/v1/fs` PUT/multipart/rename cannot reach this namespace.
-
-A lost response permanently invalidates the client session. Mutations are never
-automatically replayed. After an ambiguous COMMIT, reopen and reconcile the
-application transaction: the result can legitimately be committed or aborted.
-This implementation does not yet provide mutation-ID outcome lookup.
-
-The writer lock excludes every other process; multiple read-only leases coexist.
-It does not add multiple concurrent writer processes to DuckDB's native format.
-A crashed owner can delay reopening for up to 30 seconds. Live owners renew every
-5 seconds. Spill directories retain the lease through DuckDB's shutdown cleanup.
+| Parquet/CSV/JSON, Hive/globs, partition COPY | Supported | Extent I/O; use analytical URI for globs |
+| New analytical output | Revision-checked PUT/multipart | Existing extent creation |
+| Existing extent analytical files | Automatically routed to extent runtime | Extent runtime |
+| Writable native ATTACH, catalog and DML | Use explicit database URI | Existing extent files |
+| COMMIT/ROLLBACK, checkpoint and reopen | Local engine or attached database | Native WAL and pages on extent storage |
+| One writer or shared readers | CAS publication for ordinary output | Existing advisory POSIX locks |
+| Remote spill files | Whole-generation ordinary output | Extent random I/O and DuckDB cleanup |
+| Metadata/listing through `/v1/fs` | Yes | Yes, same paths and namespace |
+| Additional server tables/endpoints | None | None |
 
 ## Verification
 
-`make test` runs the analytical protocol fixtures against the real DuckDB CLI.
-`python3 scripts/native_smoke.py` runs native tests against an updated live fs
-server and TiDB, covering:
+`make test` builds and loads the extension and runs 24 analytical CLI fixtures.
+`scripts/test_native_live.py` runs bridge conformance, native DuckDB tests and
+client/server restart checks against disposable TiDB and filesystem services.
+See [the native adapter](native-database.md) for the exact failure scenarios.
+Server-side range validators, binary projections, shared-schema isolation and
+existing extent regressions run with `--fs-source`.
+Public CI runs six native compatibility cases on the public upstream server;
+the complete recovery suite runs against current `tidbcloud/fs`, whose checkout
+is private. The harness defaults to the complete suite, including failure tests.
 
-- Catalog/schema/table/view/index/sequence/macro creation, ALTER, constraints,
-  INSERT/UPDATE/DELETE, COMMIT/ROLLBACK, checkpoint and fresh-process reopen.
-- Client SIGKILL after a committed transaction and before an uncommitted
-  transaction finishes; WAL recovery preserves only the committed rows.
-- Writer contention, shared readers, and renewal across a full lease interval.
-- External sorting with remote spill files; out-of-memory cleanup.
-- A proxy drops an already-committed write acknowledgement; no write is retried
-  and the database can be recovered.
+## Boundaries
 
-`scripts/test_native_live.py` owns disposable TiDB/fs processes, can also run
-server Go regressions, and additionally kills/restarts fs after an acknowledged
-transaction, then checks WAL recovery. Go regressions cover cross-page binary
-writes, holes, truncation, inode identity, atomic file rename, lease expiry,
-concurrent acquisition, tenant isolation, API gates, and schema generation.
-TiDB's local unistore is a functional test backend, not a power-loss durability
-or production TiKV failover certification.
+- Native mode is single writer or shared read-only processes. It does not add
+  simultaneous database writer processes or distributed query execution.
+- Existing locks are advisory. Other writers must cooperate; ordinary API
+  clients must not replace a live database or its WAL.
+- The client fails closed after transport ambiguity or missed session renewal.
+  This is not transactional server-side fencing of every write. Delayed RPCs,
+  clock skew, TiKV failover and production object stores need more validation.
+- fsync uses the existing extent durability path. The first version syncs every
+  write, trading performance for simple acknowledgement semantics.
+- The C++ extension statically includes a Go runtime and cloud dependencies,
+  increasing build time and binary size. JSON/base64 inside its C ABI adds
+  copies. It requires no helper daemon, FUSE mount, or Go installation at runtime.
+- Native mode inherits existing extent backend/permission limits, including
+  rejection of subtree-scoped server tokens. It adds no 1 GiB database cap.
+- Named spill files can remain after a crash. Normal DuckDB cleanup removes
+  them; there is no new server-side temporary-file reclamation policy.
+- Native URI globs and automatic conversion of inline/object files into extent
+  databases are unsupported. Use analytical globs and explicit export/import.
+- Full SQLLogicTest coverage, checkpoint-boundary fault sweeps, S3/GCS failure
+  testing and broader platform/version coverage remain open.
 
-## Remaining boundaries
-
-Native mode is an **experimental compatibility implementation**, not a claim
-of 100% DuckDB, POSIX, extension or binary-version compatibility.
-
-- Server requires `DRIVE9_TENANT_PROVIDER=local` and
-  `DRIVE9_EXPERIMENTAL_FILE_VOLUMES=1`. Only unscoped filesystem tokens are accepted.
-- Database paths must end in `.duckdb`; that marker is reserved in ancestor
-  components. Sidecars and temporary files are managed within that database.
-- Aggregate logical file size is capped at 1 GiB per database, including WAL,
-  spill and unlinked-but-open files. This is a development limit.
-- Pages currently live in TiDB. Native object-block storage, compression,
-  prefetch/batching and performance tuning are future work; no throughput or
-  cost advantage over local disk/S3 is claimed.
-- Ordinary fs listing, backup/export, tenant accounting/deletion and permission
-  management do not include the isolated file-volume tables. Back up all four
-  file-volume tables consistently while stopped; use DuckDB EXPORT for portable
-  logical backups. Production enablement is intentionally blocked.
-- Cross-database file moves, directory rename, native-mode globs and POSIX
-  private-file permissions are rejected. Use analytical mode for data files.
-- Exhaustive DuckDB SQLLogicTest coverage, kill-at-every-checkpoint-boundary
-  testing, network partitions with server failover, TiKV outages/power loss,
-  and wider platform/version coverage remain before a full compatibility claim.
-
-## Analytical mode
-
-Analytical output handles stage into private local temporary files and publish
-complete generations with revision CAS. They do not participate in SQL rollback.
-Partitioned exports can leave completed files after later failure. Use a fresh
-output directory and publish an application pointer after successful export.
-Revision CAS does not fence delete/recreate ABA, so it is deliberately never used
-as the native database locking mechanism. See [the analytical server contract](server-contract.md)
-and [the native database adapter](native-database.md).
-
-Reference: DuckDB's version-pinned [filesystem contract](https://github.com/duckdb/duckdb/blob/v1.4.2/src/include/duckdb/common/file_system.hpp)
-and [block manager](https://github.com/duckdb/duckdb/blob/v1.4.2/src/storage/single_file_block_manager.cpp).
+Analytical publication uses existing revision CAS. Individual file publication
+is conditional; a multi-file export is not atomic and is not rolled back with
+SQL. Existing backend APIs also have inode-aware conditions, but the ordinary
+PUT/multipart contract used here only exposes revision. Query-local read pinning
+is not a transaction-wide or dataset-wide snapshot.

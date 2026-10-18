@@ -39,7 +39,21 @@ constexpr idx_t MAX_READ = 8 * 1024 * 1024;
 constexpr idx_t MAX_CACHE = 1024 * 1024;
 constexpr idx_t MAX_LIST = 16 * 1024 * 1024;
 
+// DuckDB's local JoinPath collapses the slashes when constructing a temporary
+// sibling of a file in a URI's root (scheme:///file -> scheme:/tmp_file).
+string NormalizeURI(const string &uri) {
+	for (const string &scheme : {string("tidbfs"), string("tidbfs+db")}) {
+		auto prefix = scheme + ":/";
+		if (uri.compare(0, prefix.size(), prefix) == 0 &&
+		    (uri.size() == prefix.size() || uri[prefix.size()] != '/')) {
+			return scheme + "://" + uri.substr(scheme.size() + 1);
+		}
+	}
+	return uri;
+}
+
 string Path(const string &uri) {
+	if (NormalizeURI(uri) != uri) return Path(NormalizeURI(uri));
 	if (uri.compare(0, 10, "tidbfs:///") != 0) {
 		throw InvalidInputException("Use an absolute tidbfs:///path URI");
 	}
@@ -200,7 +214,7 @@ Config ReadConfig(optional_ptr<FileOpener> opener, const string &path) {
 	if (!manager || !transaction) {
 		throw IOException("tidbfs requires a DuckDB secret and a file opener");
 	}
-	auto match = manager->LookupSecret(*transaction, path, "tidbfs");
+	auto match = manager->LookupSecret(*transaction, NormalizeURI(path), "tidbfs");
 	if (!match.HasMatch()) {
 		throw IOException("Create a tidbfs secret with ENDPOINT and TOKEN before opening files");
 	}
@@ -753,10 +767,13 @@ struct TiDBHandle : FileHandle {
 	}
 };
 
+#include "extent_filesystem.hpp"
+
 class TiDBFileSystem : public FileSystem {
+	TiDBDatabaseFileSystem extent_fs;
 public:
 	string GetName() const override { return "tidbfs"; }
-	bool CanHandleFile(const string &path) override { return path.compare(0, 9, "tidbfs://") == 0; }
+	bool CanHandleFile(const string &path) override { return NormalizeURI(path).compare(0, 9, "tidbfs://") == 0; }
 	bool CanSeek() override { return true; }
 	bool OnDiskFile(FileHandle &) override { return false; }
 	bool IsManuallySet() override { return true; }
@@ -799,7 +816,7 @@ public:
 			throw IOException("tidbfs cannot open a directory as a file");
 		}
 		if (r.Header("x-dat9-content-layout") == "extent") {
-			throw NotImplementedException("tidbfs extent layout requires the FUSE client");
+			return extent_fs.OpenFile(path, flags, opener);
 		}
 		handle->size = idx_t(Number(r.Header("content-length")));
 		handle->etag = r.Header("etag");
@@ -836,6 +853,7 @@ public:
 			if (r.Header("x-dat9-isdir") == "true") {
 				throw IOException("tidbfs cannot write a directory as a file");
 			}
+			if (r.Header("x-dat9-content-layout") == "extent") return extent_fs.OpenFile(path, flags, opener);
 			if (r.Header("x-dat9-content-layout") != "single" && !r.Header("x-dat9-content-layout").empty()) {
 				throw NotImplementedException("tidbfs writes require single-file content layout");
 			}
@@ -1123,8 +1141,7 @@ public:
 	}
 };
 
-#include "file_volume.hpp"
-#include "native_database.hpp"
+
 
 unique_ptr<BaseSecret> CreateTiDBSecret(ClientContext &, CreateSecretInput &input) {
 	auto scope = input.scope;

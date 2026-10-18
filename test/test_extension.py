@@ -475,6 +475,10 @@ class ExtensionTest(unittest.TestCase):
         self.assertEqual(out, "7")
         self.query("COPY (SELECT 1 AS id WHERE false) TO 'tidbfs:///output/empty.csv' (FORMAT CSV, HEADER false);")
         self.assertEqual(self.fixture.files["/output/empty.csv"], b"")
+        # DuckDB's generic JoinPath strips URI-root slashes for temp siblings.
+        self.query("COPY (SELECT 8 AS id) TO 'tidbfs:///root.csv' (FORMAT CSV, USE_TMP_FILE true);")
+        out, _ = self.query("SELECT id FROM read_csv('tidbfs:///root.csv');")
+        self.assertEqual(out, "8")
 
     def test_compressed_csv_roundtrip(self):
         self.query("COPY (SELECT i AS id FROM range(100) t(i)) TO 'tidbfs:///output/data.csv.gz' "

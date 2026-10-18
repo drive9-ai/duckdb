@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run native database tests against disposable TiDB and an updated fs binary.
 
-Requires pymysql, DuckDB 1.4.2, tidb-server and the matching experimental fs
+Requires pymysql, DuckDB 1.4.2, tidb-server and the fs
 server. No existing services, databases or filesystem credentials are used.
 """
 import argparse
@@ -17,6 +17,7 @@ import urllib.request
 import uuid
 
 import pymysql
+from build_extent import TAGS
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -43,14 +44,15 @@ def main():
     parser.add_argument('--fs-server', required=True)
     parser.add_argument('--fs-source', help='Also run relevant Go tests in this fs checkout')
     parser.add_argument('--skip-restart', action='store_true')
+    parser.add_argument('--log-dir', default=str(ROOT / 'build/native-live'))
     parser.add_argument('tests', nargs='*', help='Optional unittest names from native_smoke.py')
     args = parser.parse_args()
     processes, logs = [], []
-    log_dir = ROOT / 'build/native-live'
+    log_dir = Path(args.log_dir).resolve()
     log_dir.mkdir(parents=True, exist_ok=True)
 
     def launch(command, name, env=None):
-        log = open(log_dir / (name + '.log'), 'a')
+        log = open(log_dir / (name + '.log'), 'w')
         logs.append(log)
         child = subprocess.Popen(command, env=env, stdout=log, stderr=log)
         processes.append(child)
@@ -61,7 +63,7 @@ def main():
         try:
             launch([str(Path(args.tidb_server).resolve()), '--store=unistore', '--path=' + tmp + '/tidb',
                     '--host=127.0.0.1', '-P=' + str(sql_port), '--status=' + str(status_port),
-                    '--status-host=127.0.0.1', '-L=error'], 'tidb')
+                    '--status-host=127.0.0.1', '-L=error'], 'tidb', dict(os.environ, TZ='UTC'))
             db = wait(lambda: pymysql.connect(host='127.0.0.1', port=sql_port, user='root'))
             with db.cursor() as cursor:
                 cursor.execute('CREATE DATABASE tidbfs_live')
@@ -70,7 +72,8 @@ def main():
             print('Disposable TiDB ready', flush=True)
             # Never inherit a production DRIVE9 configuration into this harness.
             env = {k: v for k, v in os.environ.items() if not k.startswith('DRIVE9_')}
-            env.update(DRIVE9_TENANT_PROVIDER='local', DRIVE9_EXPERIMENTAL_FILE_VOLUMES='1',
+            env.update(TZ='UTC', DRIVE9_TENANT_PROVIDER='local',
+                       DRIVE9_TENANT_MAINTENANCE_INTERVAL='1s',
                        DRIVE9_LISTEN_ADDR='127.0.0.1:' + str(fs_port),
                        DRIVE9_LOCAL_DSN=f'root@tcp(127.0.0.1:{sql_port})/tidbfs_live?parseTime=true',
                        DRIVE9_S3_DIR=tmp + '/objects', DRIVE9_TOKEN_SIGNING_KEY=secrets.token_hex(32),
@@ -98,13 +101,14 @@ def main():
                 test_env = env.copy()
                 test_env['DRIVE9_TEST_TIDB_DSN'] = f'root@tcp(127.0.0.1:{sql_port})/tidbfs_tests?parseTime=true'
                 with open(log_dir / 'go-tests.log', 'w') as output:
-                    subprocess.run(['go', 'test', './pkg/datastore', './pkg/server', './pkg/tenant/schema',
+                    subprocess.run(['go', 'test', './pkg/datastore', './pkg/backend', './pkg/server', './pkg/tenant/schema',
                                     './cmd/drive9-server', '-p=1', '-count=1', '-run',
-                                    'TestFileVolume|TestFileRead|TestStatForRead|TestSharedTiDBSchemaStatementsContainsAllTables|TestCurrentSharedTiDBSchemaVersionIsDerivedFromSharedStatements|Test.*DumpInitSQL'],
+                                    'TestExtent|TestFileRead|TestStatForRead|TestReadPlan|TestAppendLog|Test.*IfRevision|Test.*RevisionCAS|TestSharedTiDBSchemaStatementsContainsAllTables|TestCurrentSharedTiDBSchemaVersionIsDerivedFromSharedStatements|Test.*DumpInitSQL'],
                                    cwd=args.fs_source, env=test_env, stdout=output, stderr=output, check=True)
                 print('Go storage, isolation, protocol, range and schema regressions passed', flush=True)
             env.update(DRIVE9_BASE=endpoint, DRIVE9_API_KEY=token)
-            subprocess.run(['python3', 'scripts/file_volume_smoke.py'], cwd=ROOT, env=env, check=True)
+            subprocess.run(['go', 'test', '-mod=readonly', '-tags', TAGS, '-count=1', '-v', '.'],
+                           cwd=ROOT / 'bridge', env=dict(env, CGO_ENABLED='1'), check=True)
             subprocess.run(['python3', 'scripts/native_smoke.py'] + args.tests, cwd=ROOT, env=env, check=True)
             if not args.skip_restart:
                 # Acknowledge a transaction without checkpointing, kill both the
@@ -143,12 +147,12 @@ def main():
                     result = subprocess.run([os.environ.get('DUCKDB', 'duckdb'), '-unsigned', '-bail', '-csv', '-noheader'],
                         input=init + attach + 'SELECT n FROM durable; CHECKPOINT;', text=True, capture_output=True, timeout=60)
                     if result.returncode:
-                        raise RuntimeError('Waiting for crashed owner lease to expire')
+                        raise RuntimeError('Waiting for crashed extent session to expire')
                     if not result.stdout.strip().endswith('123456'):
                         raise AssertionError('Committed value did not survive server restart')
                     return True
 
-                wait(recover, timeout=45)
+                wait(recover, timeout=150)
                 print('Client + fs SIGKILL, server restart and WAL recovery passed', flush=True)
         finally:
             for child in reversed(processes):

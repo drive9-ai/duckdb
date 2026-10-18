@@ -11,7 +11,9 @@ the build and test scripts.
 
 The locally verified combination is DuckDB **v1.4.2, macOS arm64**. C++ extensions
 must be built against the exact DuckDB version and platform that loads them.
-Install the DuckDB C++ headers, a C++17 compiler, and libcurl headers/library.
+Install the DuckDB C++ headers, a C++17 compiler, Go 1.25.1 or newer, and libcurl headers/library.
+The build links the existing drive9 Go extent runtime into the C++ extension.
+Go is a build dependency; no helper process or Go installation is required at runtime.
 For Homebrew DuckDB on Apple Silicon:
 
 ```sh
@@ -78,8 +80,8 @@ The build is unsigned and is not published to DuckDB's extension repository.
 | `COPY ... USE_TMP_FILE true` | Supported through server rename |
 | `EXPORT DATABASE` / `IMPORT DATABASE` | Supported; data and SQL scripts are remote |
 | SQL DDL, DML and transactions in a local/in-memory database | Normal DuckDB behavior; import/export connects it to remote files |
-| Writable `ATTACH 'tidbfs+db:///database.duckdb'` | Experimental: native database, WAL, checkpoint and recovery over TiDB pages |
-| Writable native database on ordinary `tidbfs:///` | Rejected; use the isolated database namespace |
+| Writable `ATTACH 'tidbfs+db:///database.duckdb'` | Experimental: native database, WAL, checkpoint and recovery over existing extent storage |
+| Writable native database on ordinary `tidbfs:///` | Use `tidbfs+db:///` to select extent I/O and database locking; both address the same filesystem |
 | Multi-file atomic export, rollback of external files | Not provided |
 
 Writable handles stage bytes in a private, unlinked local temporary file. This
@@ -105,27 +107,50 @@ namespace replacement as a database locking protocol. See the
 
 ## Native database mode (experimental)
 
-`tidbfs+db:///warehouse.duckdb` runs DuckDB's own storage engine over remote
-the general `/v1/file-volumes` API, backed by 64 KiB TiDB pages. The plugin maps
-database/WAL/spill files to ordinary paths and explicitly marks spill directories
-ephemeral; the server has no DuckDB format or filename rules. The server checks a renewable lease inside every storage
-transaction. Database and WAL writes are durable on acknowledgement; no whole
-file upload is required at COMMIT. Single-writer exclusion, shared readers,
-checkpoint/reopen, client-crash recovery and remote spill have live tests.
+`tidbfs+db:///warehouse.duckdb` runs DuckDB's storage engine on the existing
+extent data plane. It addresses `/warehouse.duckdb` in the **same filesystem**
+as `/v1/fs/warehouse.duckdb`; its WAL is `/warehouse.duckdb.wal`. There is no
+separate volume, hidden `/data` mapping, new server endpoint, schema or feature
+flag. Ordinary listing and metadata APIs see these files.
 
-Enable `DRIVE9_EXPERIMENTAL_FILE_VOLUMES=1` on a **local-provider** fs server and use a
-secret scoped to `tidbfs+db:///`. The initial implementation has a 1 GiB limit
-per database and is not integrated with production fs backup, billing or tenant
-deletion. This is progress toward compatibility, not a 100% compatibility claim.
-See [setup, protocol and live tests](docs/native-database.md).
+The C++ adapter calls a statically linked, pinned drive9 extent client through
+a small in-process C ABI. That client already implements object blocks, caches,
+metadata sessions, POSIX locks and fsync. Metadata uses `/v1/extent/meta`,
+credentials use `/v1/data-credential`, and bytes use the existing object store.
+The extension reuses those implementations instead of rebuilding their protocol.
+Use an unscoped filesystem token, as required by the existing extent API.
+
+```sql
+CREATE SECRET fs (TYPE tidbfs, ENDPOINT 'https://YOUR_FILESYSTEM_ENDPOINT',
+                  TOKEN 'YOUR_FILESYSTEM_API_KEY');
+ATTACH 'tidbfs+db:///warehouse.duckdb' AS warehouse;
+CREATE TABLE warehouse.items AS SELECT * FROM range(100);
+CHECKPOINT warehouse;
+```
+
+Ordinary `tidbfs:///` analytical opens also recognize existing extent files and
+route their I/O through this adapter. New ordinary analytical output still uses
+revision-checked PUT/multipart. Native mode accepts arbitrary filenames; the
+`.duckdb` suffix is a convention, not a server rule.
+
+Locks are the existing **advisory inode locks**: one database writer or shared
+readers, with cooperating clients. Ordinary clients that ignore locks must not
+replace a live database or its WAL. The adapter stops after an ambiguous metadata
+response or a missed session deadline; it never reacquires ownership under an
+already-open DuckDB instance. The initial write policy calls existing VFS fsync
+after each write before acknowledging it. This favors correctness over batching.
+See [setup, recovery behavior and live tests](docs/native-database.md).
 
 The value is twofold: analytical files let DuckDB's pruning reach remote byte
-ranges, while native mode lets a short-lived process leave durable SQL state
-that another process can recover. Queries still run locally in DuckDB. The
-project does not turn DuckDB into a multi-writer distributed SQL engine, and
-native-mode performance/cost still needs measurement and optimization.
+ranges, while native mode lets a process leave SQL state that another process
+can recover, using the filesystem's existing storage machinery. Queries execute
+locally. This adds neither distributed SQL execution nor concurrent database
+writer processes. Extent performance and failure behavior still require broader
+production validation; it is not a claim of complete DuckDB compatibility.
 
 ## Read-path optimizations
+
+For ordinary inline and single-object files:
 
 * One metadata lookup per path/endpoint/credential **per query**, shared across
   DuckDB's row-group readers. Query end discards these entries; later queries
@@ -196,9 +221,9 @@ is an explicit test setting; the server's default remains unchanged.
 
 ## Boundaries
 
-The analytical `tidbfs:///` path supports **read/write analytics files** and
-rejects native database locks and extent-layout files. Experimental native
-storage uses the separate `tidbfs+db:///` protocol above. No dataset-wide
+The analytical `tidbfs:///` path supports **read/write analytics files**,
+including existing extent-layout files. Select `tidbfs+db:///` for native
+database access; it selects the extent adapter within the same filesystem. No dataset-wide
 transaction/snapshot is implied for analytical files. Inline changes
 fail with HTTP 412; single-object reads can finish from their pinned immutable
 generation, or fail if that generation is garbage-collected. Query-level
