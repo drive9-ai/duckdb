@@ -51,6 +51,33 @@ prefixes needed by the glob and preserves normal DuckDB partition pruning.
 Directory-list authorization is separate from file-read authorization; scoped
 credentials must permit both when a query uses globs.
 
+## Writes and namespace operations
+
+Writable outputs use the existing server write protocol:
+
+* `GET /v1/status`: `inline_threshold` and optionally `max_upload_bytes`.
+  Nonempty files **at or above** the threshold use multipart uploads.
+* HEAD of an existing output must include a positive `X-Dat9-Revision`.
+* `PUT /v1/fs/<path>` with `X-Dat9-Expected-Revision`: `0` creates only if
+  absent; a positive revision conditionally replaces the current generation.
+  Successful inline writes return JSON `{ "revision": <committed revision> }`.
+* `POST /v2/uploads/initiate` with `path`, `total_size`, `expected_revision`;
+  `/presign` with `part_number`; direct signed part PUTs; `/complete` with
+  `parts: [{number, etag}]`; `/abort` on failure. Required checksum contracts
+  are rejected until supported. Filesystem tokens and conditional headers are
+  never copied to object storage. Presigned headers are restricted to content
+  type and object-provider headers.
+* `POST /v1/fs/<directory>/?mkdir`, `DELETE ...?kind=file`,
+  `DELETE /v1/fs/<directory>/?recursive`, and `POST /v1/fs/<target>?rename`.
+  Rename sends `X-Dat9-Rename-Source` with `X-Dat9-Path-Encoding: base64url`.
+  Source and destination must resolve to the same endpoint and credentials.
+
+Revision conflicts return 409. Revision-only writes do not fence inode
+replacement or provide distributed file locking. Namespace mutations are not
+rolled back with a failed SQL transaction. Sync/close publishes the complete
+staged output; it is not a database WAL durability protocol. Server upload limits
+and credential permissions continue to apply.
+
 ## Consistency and scope
 
 Each query pins each opened file's version across its row-group readers. Inline

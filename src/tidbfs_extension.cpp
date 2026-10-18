@@ -15,13 +15,16 @@
 #include <fnmatch.h>
 
 #include <algorithm>
+#include <cerrno>
 #include <charconv>
+#include <cstdio>
 #include <cstring>
 #include <limits>
 #include <map>
 #include <mutex>
 #include <set>
 #include <tuple>
+#include <unistd.h>
 
 namespace duckdb {
 namespace {
@@ -61,6 +64,33 @@ string EncodePath(const string &path) {
 		}
 	}
 	return result;
+}
+
+string SourceHeader(const string &path) {
+	static const char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+	string result;
+	unsigned value = 0;
+	int bits = 0;
+	for (unsigned char byte : path) {
+		value = (value << 8) | byte;
+		bits += 8;
+		while (bits >= 6) {
+			bits -= 6;
+			result += alphabet[(value >> bits) & 63];
+		}
+	}
+	if (bits) {
+		result += alphabet[(value << (6 - bits)) & 63];
+	}
+	return result;
+}
+
+string DirectoryPath(const string &uri) {
+	auto path = Path(uri);
+	if (path.back() != '/') {
+		path += '/';
+	}
+	return path;
 }
 
 int64_t Number(const string &text) {
@@ -216,8 +246,11 @@ public:
 	HTTP(const HTTP &) = delete;
 	HTTP &operator=(const HTTP &) = delete;
 
-	Response Request(const string &url, const string &token, bool head, const vector<string> &headers, idx_t limit) {
+	Response Request(const string &url, const string &token, bool head, const vector<string> &headers, idx_t limit,
+	                 const char *method = nullptr, const string &body = "", int fd = -1, idx_t offset = 0,
+	                 idx_t length = 0) {
 		Response response;
+		UploadSource source {fd, offset, length};
 		response.limit = MaxValue<idx_t>(limit, 65536); // bounded redirect/error bodies
 		curl_easy_reset(curl); // preserves this handle's connection pool
 		curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
@@ -228,13 +261,26 @@ public:
 		curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
 		curl_easy_setopt(curl, CURLOPT_TIMEOUT, 120L);
 		curl_easy_setopt(curl, CURLOPT_HTTP_CONTENT_DECODING, 0L);
-		curl_easy_setopt(curl, CURLOPT_USERAGENT, "duckdb-tidbfs/0.1.0");
+		curl_easy_setopt(curl, CURLOPT_USERAGENT, "duckdb-tidbfs/0.2.0");
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, Body);
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
 		curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, Header);
 		curl_easy_setopt(curl, CURLOPT_HEADERDATA, &response);
+		if (fd >= 0) {
+			curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
+			curl_easy_setopt(curl, CURLOPT_READFUNCTION, Upload);
+			curl_easy_setopt(curl, CURLOPT_READDATA, &source);
+			curl_easy_setopt(curl, CURLOPT_INFILESIZE_LARGE, curl_off_t(length));
+		} else if (method) {
+			curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.data());
+			curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE_LARGE, curl_off_t(body.size()));
+		}
+		if (method) {
+			curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, method);
+		}
 		curl_slist *list = nullptr;
 		list = curl_slist_append(list, "Accept-Encoding: identity");
+		list = curl_slist_append(list, "Expect:");
 		if (!token.empty()) {
 			list = curl_slist_append(list, ("Authorization: Bearer " + token).c_str());
 		}
@@ -254,6 +300,27 @@ public:
 
 private:
 	CURL *curl;
+	struct UploadSource {
+		int fd;
+		idx_t offset, remaining;
+	};
+	static size_t Upload(char *data, size_t size, size_t count, void *user) noexcept {
+		auto &source = *static_cast<UploadSource *>(user);
+		auto length = MinValue<idx_t>(size * count, source.remaining);
+		if (!length) {
+			return 0;
+		}
+		ssize_t n;
+		do {
+			n = pread(source.fd, data, length, off_t(source.offset));
+		} while (n < 0 && errno == EINTR);
+		if (n <= 0) {
+			return CURL_READFUNC_ABORT;
+		}
+		source.offset += idx_t(n);
+		source.remaining -= idx_t(n);
+		return size_t(n);
+	}
 	static size_t Body(char *data, size_t size, size_t count, void *user) noexcept {
 		auto &r = *static_cast<Response *>(user);
 		auto length = size * count;
@@ -292,14 +359,226 @@ void CheckStatus(const Response &r) {
 	if (r.status == 412) {
 		throw IOException("tidbfs file changed since it was opened; restart the query");
 	}
+	if (r.status == 409) {
+		throw IOException("tidbfs write conflict; destination changed or an upload is already active");
+	}
 	if (r.status < 200 || r.status >= 300) {
 		throw IOException("tidbfs HTTP %d", int(r.status));
 	}
 }
 
+nlohmann::json JSON(const Response &r) {
+	CheckStatus(r);
+	auto json = nlohmann::json::parse(r.body, nullptr, false);
+	if (!json.is_object()) {
+		throw IOException("Invalid tidbfs JSON response");
+	}
+	return json;
+}
+
+string JSONString(const nlohmann::json &json, const char *key) {
+	if (!json.contains(key) || !json[key].is_string()) {
+		throw IOException("Invalid tidbfs response field: %s", key);
+	}
+	return json[key].get<std::string>();
+}
+
+int64_t JSONNumber(const nlohmann::json &json, const char *key) {
+	if (!json.contains(key) || !json[key].is_number_integer()) {
+		throw IOException("Invalid tidbfs response field: %s", key);
+	}
+	return Number(json[key].dump());
+}
+
+Response PostJSON(HTTP &http, const Config &config, const string &route, const nlohmann::json &body) {
+	return http.Request(config.endpoint + route, config.token, false, {"Content-Type: application/json"}, MAX_LIST,
+	                    "POST", body.dump());
+}
+
+// Spill writable handles to an unlinked private local file. Memory stays bounded
+// even for large COPY output; destruction only discards uncommitted bytes.
+struct Spool {
+	FILE *file = std::tmpfile();
+	Spool() {
+		if (!file) {
+			throw IOException("Cannot create tidbfs staging file");
+		}
+	}
+	~Spool() { std::fclose(file); }
+	int FD() const { return fileno(file); }
+	void IO(void *buffer, idx_t length, idx_t offset, bool write) {
+		auto bytes = static_cast<char *>(buffer);
+		while (length) {
+			auto amount = MinValue(length, MAX_READ);
+			auto n = write ? pwrite(FD(), bytes, amount, off_t(offset)) : pread(FD(), bytes, amount, off_t(offset));
+			if (n < 0 && errno == EINTR) {
+				continue;
+			}
+			if (n <= 0) {
+				throw IOException("tidbfs local staging I/O failed");
+			}
+			bytes += n;
+			offset += idx_t(n);
+			length -= idx_t(n);
+		}
+	}
+};
+
+// Publish one complete generation. Never retry an ambiguous commit: a failed
+// response may have followed a successful server-side publication.
+int64_t Publish(HTTP &http, const Config &config, const string &path, Spool &spool, idx_t size, int64_t revision) {
+	auto status = JSON(http.Request(config.endpoint + "/v1/status", config.token, false, {}, MAX_LIST));
+	auto threshold = idx_t(JSONNumber(status, "inline_threshold"));
+	if (status.contains("max_upload_bytes") && size > idx_t(JSONNumber(status, "max_upload_bytes"))) {
+		throw IOException("tidbfs output exceeds the server's upload limit");
+	}
+	if (!size || size < threshold) {
+		auto r = http.Request(config.endpoint + "/v1/fs" + EncodePath(Path(path)), config.token, false,
+		                      {"Content-Type: application/octet-stream", "X-Dat9-Expected-Revision: " + std::to_string(revision)},
+		                      MAX_LIST, "PUT", "", spool.FD(), 0, size);
+		CheckStatus(r);
+		if (r.status != 200 && r.status != 201) {
+			throw IOException("tidbfs expected a completed inline write");
+		}
+		auto committed = JSONNumber(JSON(r), "revision");
+		if (committed <= 0) {
+			throw IOException("tidbfs write response lacks a committed revision");
+		}
+		return committed;
+	}
+	auto plan = JSON(PostJSON(http, config, "/v2/uploads/initiate",
+	                          {{"path", Path(path)}, {"total_size", size}, {"expected_revision", revision}}));
+	auto id = JSONString(plan, "upload_id");
+	if (id.empty() || id.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_") != string::npos) {
+		throw IOException("Invalid tidbfs upload ID");
+	}
+	auto route = "/v2/uploads/" + id;
+	try {
+		auto part_size = idx_t(JSONNumber(plan, "part_size"));
+		if (!part_size || (size - 1) / part_size >= 10000) {
+			throw IOException("Invalid tidbfs upload part size");
+		}
+		if (plan.contains("checksum_contract")) {
+			auto &contract = plan["checksum_contract"];
+			if (!contract.is_object() || !contract.contains("required") || !contract["required"].is_boolean()) {
+				throw IOException("Invalid tidbfs upload checksum contract");
+			}
+			if (contract["required"].get<bool>()) {
+				throw NotImplementedException("tidbfs server requires an unsupported upload checksum contract");
+			}
+		}
+		nlohmann::json parts = nlohmann::json::array();
+		for (idx_t offset = 0, number = 1; offset < size; number++) {
+			auto length = MinValue(part_size, size - offset);
+			Response uploaded;
+			for (int attempt = 0; attempt < 2; attempt++) {
+				auto part = JSON(PostJSON(http, config, route + "/presign", {{"part_number", number}}));
+				if (JSONNumber(part, "number") != int64_t(number) || JSONNumber(part, "size") != int64_t(length)) {
+					throw IOException("Invalid tidbfs presigned part bounds");
+				}
+				vector<string> headers;
+				if (part.contains("headers") && !part["headers"].is_null()) {
+					if (!part["headers"].is_object()) {
+						throw IOException("Invalid tidbfs presigned headers");
+					}
+					for (auto item = part["headers"].begin(); item != part["headers"].end(); ++item) {
+						auto key = StringUtil::Lower(item.key());
+						if (key != "content-type" && key.compare(0, 6, "x-amz-") != 0 &&
+						    key.compare(0, 5, "x-ms-") != 0 && key.compare(0, 7, "x-goog-") != 0) {
+							continue;
+						}
+						if (!item.value().is_string() || key.find_first_of("\r\n:") != string::npos) {
+							throw IOException("Invalid tidbfs presigned header");
+						}
+						auto value = item.value().get<std::string>();
+						if (value.find_first_of("\r\n") != string::npos) {
+							throw IOException("Invalid tidbfs presigned header value");
+						}
+						headers.push_back(item.key() + ": " + value);
+					}
+				}
+				uploaded = http.Request(ObjectURL(config.endpoint, JSONString(part, "url")), "", false, headers,
+				                        65536, "PUT", "", spool.FD(), offset, length);
+				if (uploaded.status != 401 && uploaded.status != 403) {
+					break;
+				}
+			}
+			CheckStatus(uploaded);
+			auto etag = uploaded.Header("etag");
+			if (etag.empty()) {
+				throw IOException("tidbfs uploaded part is missing its ETag");
+			}
+			parts.push_back({{"number", number}, {"etag", etag}});
+			offset += length;
+		}
+		auto completed = PostJSON(http, config, route + "/complete", {{"parts", parts}});
+		CheckStatus(completed);
+		if (completed.status != 200) {
+			throw IOException("tidbfs expected a completed multipart publication");
+		}
+	} catch (...) {
+		try {
+			PostJSON(http, config, route + "/abort", nlohmann::json::object());
+		} catch (...) {
+			// Best effort; the server expires abandoned sessions. Preserve the original error.
+		}
+		throw;
+	}
+	return revision + 1;
+}
+
+struct DeferredWrites : ClientContextState {
+	struct Entry {
+		Config config;
+		string path;
+		unique_ptr<Spool> spool;
+		idx_t size;
+		int64_t revision;
+	};
+	std::mutex mu;
+	vector<Entry> entries;
+	bool failed = false;
+	void Add(Config config, string path, unique_ptr<Spool> spool, idx_t size, int64_t revision) noexcept {
+		std::lock_guard<std::mutex> lock(mu);
+		try {
+			entries.push_back({std::move(config), std::move(path), std::move(spool), size, revision});
+		} catch (...) {
+			failed = true;
+		}
+	}
+	void QueryEnd(ClientContext &, optional_ptr<ErrorData> error) override {
+		vector<Entry> pending;
+		bool allocation_failed;
+		{
+			std::lock_guard<std::mutex> lock(mu);
+			pending.swap(entries);
+			allocation_failed = failed;
+			failed = false;
+		}
+		if (error || (pending.empty() && !allocation_failed)) {
+			return;
+		}
+		if (allocation_failed) {
+			throw IOException("Could not retain tidbfs pending output");
+		}
+		HTTP http;
+		for (auto &entry : pending) {
+			Publish(http, entry.config, entry.path, *entry.spool, entry.size, entry.revision);
+		}
+	}
+};
+
 struct TiDBHandle : FileHandle {
 	TiDBHandle(FileSystem &fs, const string &path, FileOpenFlags flags, Config config, shared_ptr<FileVersion> version)
 	    : FileHandle(fs, path, flags), config(std::move(config)), version(std::move(version)) {
+	}
+	~TiDBHandle() override {
+		// EXPORT's schema/load writers destroy handles without calling Close.
+		// Defer their publication to QueryEnd, where errors can be reported.
+		// Never perform fallible network I/O in a noexcept destructor.
+		if (spool && dirty && !failed && deferred) {
+			deferred->Add(std::move(config), std::move(path), std::move(spool), size, revision);
+		}
 	}
 	Config config;
 	shared_ptr<FileVersion> version;
@@ -309,11 +588,55 @@ struct TiDBHandle : FileHandle {
 	int64_t mtime = 0;
 	string etag, cache;
 	bool closed = false;
+	bool dirty = false, failed = false;
+	int64_t revision = 0;
+	unique_ptr<Spool> spool;
+	shared_ptr<DeferredWrites> deferred;
 	string Endpoint() const { return config.endpoint + "/v1/fs" + EncodePath(Path(path)); }
+	void Sync() {
+		if (closed || failed) {
+			throw IOException("tidbfs handle is closed or an earlier write failed");
+		}
+		if (!dirty) {
+			return;
+		}
+		try {
+			revision = Publish(http, config, path, *spool, size, revision);
+			dirty = false;
+		} catch (...) {
+			failed = true; // Do not silently retry an ambiguous publication on Close.
+			throw;
+		}
+	}
 	void Close() override {
 		std::lock_guard<std::mutex> lock(mu);
+		if (closed) {
+			return;
+		}
+		Sync();
 		closed = true;
 		cache.clear();
+		spool.reset();
+	}
+	void WriteAt(void *buffer, idx_t count, idx_t offset) {
+		if (closed || failed || !spool) {
+			throw IOException("tidbfs handle is not writable");
+		}
+		if (offset > idx_t(std::numeric_limits<int64_t>::max()) ||
+		    count > idx_t(std::numeric_limits<int64_t>::max()) - offset) {
+			throw IOException("tidbfs write exceeds supported file size");
+		}
+		if (!count) {
+			return;
+		}
+		try {
+			spool->IO(buffer, count, offset, true);
+			size = MaxValue(size, offset + count);
+			dirty = true;
+		} catch (...) {
+			failed = true;
+			throw;
+		}
 	}
 	Response Resolve(idx_t offset, idx_t count) {
 		auto range = "Range: bytes=" + std::to_string(offset) + "-" + std::to_string(offset + count - 1);
@@ -387,6 +710,10 @@ struct TiDBHandle : FileHandle {
 		if (closed || offset > size || count > size - offset) {
 			throw IOException("tidbfs read outside an open file");
 		}
+		if (spool) {
+			spool->IO(buffer, count, offset, false);
+			return;
+		}
 		auto out = static_cast<char *>(buffer);
 		while (count) {
 			if (offset >= cache_start && offset - cache_start < cache.size()) {
@@ -429,9 +756,20 @@ public:
 	bool IsManuallySet() override { return true; }
 	unique_ptr<FileHandle> OpenFile(const string &path, FileOpenFlags flags, optional_ptr<FileOpener> opener) override {
 		Path(path);
-		if (!flags.OpenForReading() || flags.OpenForWriting() || flags.CreateFileIfNotExists() ||
-		    flags.OverwriteExistingFile() || flags.OpenForAppending()) {
-			throw NotImplementedException("tidbfs currently supports read-only analytics files");
+		// COPY requests WRITE_LOCK on write-only output handles. Those publish
+		// a complete generation with revision CAS. Database handles also request
+		// read access and require a real lifetime lock, which we must not fake.
+		if (flags.Lock() != FileLockType::NO_LOCK && (!flags.OpenForWriting() || flags.OpenForReading())) {
+			throw NotImplementedException("tidbfs cannot provide database file locks; use a local DuckDB database and remote COPY/EXPORT");
+		}
+		if (flags.CreatePrivateFile()) {
+			throw NotImplementedException("tidbfs private file permissions are controlled by server credentials");
+		}
+		if (flags.OpenForWriting()) {
+			return OpenWrite(path, flags, opener);
+		}
+		if (!flags.OpenForReading()) {
+			throw InvalidInputException("tidbfs requires read or write access");
 		}
 		auto config = ReadConfig(opener, path);
 		auto version = make_shared_ptr<FileVersion>();
@@ -471,6 +809,97 @@ public:
 		version->initialized = true;
 		return handle;
 	}
+	unique_ptr<FileHandle> OpenWrite(const string &path, FileOpenFlags flags, optional_ptr<FileOpener> opener) {
+		auto context = FileOpener::TryGetClientContext(opener);
+		if (!context) {
+			throw IOException("tidbfs writes require a DuckDB query context");
+		}
+		auto handle = make_uniq<TiDBHandle>(*this, path, flags, ReadConfig(opener, path), make_shared_ptr<FileVersion>());
+		auto &h = *handle;
+		h.deferred = context->registered_state->GetOrCreate<DeferredWrites>("tidbfs.pending_writes");
+		auto r = h.http.Request(h.Endpoint(), h.config.token, true, {}, 0);
+		bool exists = r.status != 404;
+		if (exists) {
+			CheckStatus(r);
+			if (flags.ReturnNullIfExists()) {
+				return nullptr;
+			}
+			if (flags.ExclusiveCreate()) {
+				throw IOException("tidbfs file already exists");
+			}
+			if (r.Header("x-dat9-isdir") == "true") {
+				throw IOException("tidbfs cannot write a directory as a file");
+			}
+			if (r.Header("x-dat9-content-layout") != "single" && !r.Header("x-dat9-content-layout").empty()) {
+				throw NotImplementedException("tidbfs writes require single-file content layout");
+			}
+			h.revision = Number(r.Header("x-dat9-revision"));
+			if (h.revision <= 0 || h.revision == std::numeric_limits<int64_t>::max()) {
+				throw IOException("tidbfs writes require a valid server revision");
+			}
+			h.size = idx_t(Number(r.Header("content-length")));
+			h.etag = r.Header("etag");
+		} else if (flags.ReturnNullIfNotExists()) {
+			return nullptr;
+		} else if (!flags.CreateFileIfNotExists() && !flags.OverwriteExistingFile()) {
+			throw IOException("tidbfs file does not exist");
+		}
+		auto spool = make_uniq<Spool>();
+		if (exists && !flags.OverwriteExistingFile()) {
+			if (h.etag.empty() || h.etag.compare(0, 2, "W/") == 0) {
+				throw IOException("tidbfs preserving writes require a strong file ETag");
+			}
+			for (idx_t offset = 0; offset < h.size;) {
+				auto length = MinValue(MAX_READ, h.size - offset);
+				auto data = h.Fetch(offset, length);
+				spool->IO(&data[0], length, offset, true);
+				offset += length;
+			}
+		} else {
+			h.size = 0;
+		}
+		h.spool = std::move(spool);
+		h.dirty = !exists || flags.OverwriteExistingFile();
+		h.position = flags.OpenForAppending() ? h.size : 0;
+		return handle;
+	}
+	void Write(FileHandle &base, void *buffer, int64_t count, idx_t offset) override {
+		auto &h = base.Cast<TiDBHandle>();
+		std::lock_guard<std::mutex> lock(h.mu);
+		if (count < 0) {
+			throw IOException("Negative tidbfs write size");
+		}
+		h.WriteAt(buffer, idx_t(count), offset);
+	}
+	int64_t Write(FileHandle &base, void *buffer, int64_t count) override {
+		auto &h = base.Cast<TiDBHandle>();
+		std::lock_guard<std::mutex> lock(h.mu);
+		if (count < 0) {
+			throw IOException("Negative tidbfs write size");
+		}
+		auto offset = h.flags.OpenForAppending() ? h.size : h.position;
+		h.WriteAt(buffer, idx_t(count), offset);
+		h.position = offset + idx_t(count);
+		return count;
+	}
+	void FileSync(FileHandle &base) override {
+		auto &h = base.Cast<TiDBHandle>();
+		std::lock_guard<std::mutex> lock(h.mu);
+		h.Sync();
+	}
+	void Truncate(FileHandle &base, int64_t size) override {
+		auto &h = base.Cast<TiDBHandle>();
+		std::lock_guard<std::mutex> lock(h.mu);
+		if (!h.spool || h.closed || h.failed || size < 0) {
+			throw IOException("Invalid tidbfs truncate");
+		}
+		if (ftruncate(h.spool->FD(), off_t(size)) != 0) {
+			h.failed = true;
+			throw IOException("tidbfs local truncate failed");
+		}
+		h.size = idx_t(size);
+		h.dirty = true;
+	}
 	void Read(FileHandle &base, void *buffer, int64_t count, idx_t offset) override {
 		auto &h = base.Cast<TiDBHandle>();
 		std::lock_guard<std::mutex> lock(h.mu);
@@ -490,7 +919,11 @@ public:
 		h.position += amount;
 		return int64_t(amount);
 	}
-	int64_t GetFileSize(FileHandle &base) override { return int64_t(base.Cast<TiDBHandle>().size); }
+	int64_t GetFileSize(FileHandle &base) override {
+		auto &h = base.Cast<TiDBHandle>();
+		std::lock_guard<std::mutex> lock(h.mu);
+		return int64_t(h.size);
+	}
 	timestamp_t GetLastModifiedTime(FileHandle &base) override {
 		auto seconds = base.Cast<TiDBHandle>().mtime;
 		if (seconds > std::numeric_limits<int64_t>::max() / 1000000) {
@@ -498,7 +931,11 @@ public:
 		}
 		return timestamp_t(seconds * 1000000);
 	}
-	string GetVersionTag(FileHandle &base) override { return base.Cast<TiDBHandle>().etag; }
+	string GetVersionTag(FileHandle &base) override {
+		auto &h = base.Cast<TiDBHandle>();
+		std::lock_guard<std::mutex> lock(h.mu);
+		return h.spool ? "" : h.etag;
+	}
 	FileType GetFileType(FileHandle &) override { return FileType::FILE_TYPE_REGULAR; }
 	void Seek(FileHandle &base, idx_t position) override {
 		auto &h = base.Cast<TiDBHandle>();
@@ -519,6 +956,98 @@ public:
 		}
 		CheckStatus(r);
 		return r.Header("x-dat9-isdir") != "true";
+	}
+	bool DirectoryExists(const string &path, optional_ptr<FileOpener> opener) override {
+		auto directory = DirectoryPath(path);
+		auto config = ReadConfig(opener, "tidbfs://" + directory);
+		HTTP http;
+		auto r = http.Request(config.endpoint + "/v1/fs" + EncodePath(directory), config.token, true, {}, 0);
+		if (r.status == 404) {
+			return false;
+		}
+		CheckStatus(r);
+		return r.Header("x-dat9-isdir") == "true";
+	}
+	void CreateDirectory(const string &path, optional_ptr<FileOpener> opener) override {
+		auto directory = DirectoryPath(path);
+		auto config = ReadConfig(opener, "tidbfs://" + directory);
+		HTTP http;
+		auto r = http.Request(config.endpoint + "/v1/fs" + EncodePath(directory) + "?mkdir", config.token,
+		                      false, {}, 65536, "POST");
+		if (r.status == 409 && DirectoryExists(path, opener)) {
+			return;
+		}
+		CheckStatus(r);
+	}
+	bool ListFiles(const string &path, const std::function<void(const string &, bool)> &callback,
+	               FileOpener *opener) override {
+		auto directory = DirectoryPath(path);
+		auto config = ReadConfig(opener, "tidbfs://" + directory);
+		HTTP http;
+		auto r = http.Request(config.endpoint + "/v1/fs" + EncodePath(directory) + "?list=1", config.token,
+		                      false, {}, MAX_LIST);
+		if (r.status == 404) {
+			return false;
+		}
+		auto json = JSON(r);
+		if (!json.contains("entries") || !json["entries"].is_array()) {
+			throw IOException("Invalid tidbfs directory response");
+		}
+		for (auto &entry : json["entries"]) {
+			auto name = JSONString(entry, "name");
+			if (!entry.contains("isDir") || !entry["isDir"].is_boolean()) {
+				throw IOException("Invalid tidbfs directory entry type");
+			}
+			bool dir = entry["isDir"].get<bool>();
+			if (dir && !name.empty() && name.back() == '/') {
+				name.pop_back();
+			}
+			if (name.empty() || name == "." || name == ".." || name.find_first_of("/\\") != string::npos ||
+			    name.find('\0') != string::npos) {
+				throw IOException("Invalid tidbfs directory entry name");
+			}
+			callback(name, dir);
+		}
+		return true;
+	}
+	bool TryRemoveFile(const string &path, optional_ptr<FileOpener> opener) override {
+		auto config = ReadConfig(opener, path);
+		HTTP http;
+		auto r = http.Request(config.endpoint + "/v1/fs" + EncodePath(Path(path)) + "?kind=file", config.token,
+		                      false, {}, 65536, "DELETE");
+		if (r.status == 404) {
+			return false;
+		}
+		CheckStatus(r);
+		return true;
+	}
+	void RemoveFile(const string &path, optional_ptr<FileOpener> opener) override {
+		if (!TryRemoveFile(path, opener)) {
+			throw IOException("tidbfs file does not exist");
+		}
+	}
+	void RemoveDirectory(const string &path, optional_ptr<FileOpener> opener) override {
+		auto directory = DirectoryPath(path);
+		if (directory == "/") {
+			throw IOException("tidbfs cannot recursively remove the filesystem root");
+		}
+		auto config = ReadConfig(opener, "tidbfs://" + directory);
+		HTTP http;
+		CheckStatus(http.Request(config.endpoint + "/v1/fs" + EncodePath(directory) + "?recursive", config.token,
+		                         false, {}, 65536, "DELETE"));
+	}
+	void MoveFile(const string &source, const string &target, optional_ptr<FileOpener> opener) override {
+		auto source_path = Path(source);
+		auto target_path = Path(target);
+		auto config = ReadConfig(opener, source);
+		auto target_config = ReadConfig(opener, target);
+		if (config.endpoint != target_config.endpoint || config.token != target_config.token) {
+			throw IOException("tidbfs cannot atomically move files across credential scopes or filesystems");
+		}
+		HTTP http;
+		CheckStatus(http.Request(config.endpoint + "/v1/fs" + EncodePath(target_path) + "?rename", config.token, false,
+		                         {"X-Dat9-Path-Encoding: base64url", "X-Dat9-Rename-Source: " + SourceHeader(source_path)},
+		                         65536, "POST"));
 	}
 	vector<OpenFileInfo> Glob(const string &pattern, FileOpener *opener) override {
 		auto path = Path(pattern);

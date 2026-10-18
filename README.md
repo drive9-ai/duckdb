@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/siddontang/duckdb-tidbfs/actions/workflows/ci.yml/badge.svg)](https://github.com/siddontang/duckdb-tidbfs/actions/workflows/ci.yml)
 
-`tidbfs` is a C++ DuckDB filesystem extension for read-only analytics over the
+`tidbfs` is a C++ DuckDB filesystem extension for reading and writing analytics files over the
 TiDB Filesystem HTTP data plane. It works in the DuckDB CLI and does not require
 Python, fsspec, FUSE, or downloading whole Parquet files. Python is used only by
 the build and test scripts.
@@ -47,6 +47,16 @@ SELECT region, sum(amount_cents)
 FROM read_parquet('tidbfs:///warehouse/day=*/*.parquet', hive_partitioning=true)
 WHERE day = '2026-10-17'
 GROUP BY region;
+
+COPY (SELECT * FROM range(100) t(id))
+TO 'tidbfs:///results/output.parquet' (FORMAT PARQUET);
+
+COPY (SELECT i AS id, i % 4 AS bucket FROM range(100) t(i))
+TO 'tidbfs:///results/partitioned' (FORMAT PARQUET, PARTITION_BY(bucket));
+
+EXPORT DATABASE 'tidbfs:///backups/run-001' (FORMAT PARQUET);
+-- In a fresh local/in-memory database with the extension and secret loaded:
+IMPORT DATABASE 'tidbfs:///backups/run-001';
 ```
 
 `ENDPOINT` is the filesystem data-plane base URL; `/v1/fs` is appended by the
@@ -57,6 +67,40 @@ through stdin rather than placing credentials in process arguments.
 
 The build is unsigned and is not published to DuckDB's extension repository.
 `INSTALL tidbfs` from a public repository is not available yet.
+
+## Write support and compatibility
+
+| Operation | Support |
+| --- | --- |
+| Read Parquet, CSV, JSON; glob/Hive pruning | Supported |
+| `COPY TO` Parquet, CSV, JSON; overwrite an output file | Supported |
+| Partitioned `COPY`, `APPEND`, `OVERWRITE` | Supported; APPEND adds dataset files |
+| `COPY ... USE_TMP_FILE true` | Supported through server rename |
+| `EXPORT DATABASE` / `IMPORT DATABASE` | Supported; data and SQL scripts are remote |
+| SQL DDL, DML and transactions in a local/in-memory database | Normal DuckDB behavior; import/export connects it to remote files |
+| Writable `ATTACH 'tidbfs:///database.duckdb'` | Rejected: requires distributed locks and durable database/WAL I/O |
+| Multi-file atomic export, rollback of external files | Not provided |
+
+Writable handles stage bytes in a private, unlinked local temporary file. This
+supports seek, offset writes and truncation without retaining the entire output
+in memory, but requires local scratch space proportional to open output files.
+On explicit close/sync, the extension publishes a whole generation. Small files
+use a conditional PUT; large files use V2 multipart uploads directly to object
+storage, without forwarding filesystem credentials. Expired part URLs get one
+refresh; failed multipart uploads are aborted on a best-effort basis.
+
+DuckDB's EXPORT script writers destroy handles without calling close. Their
+pending output is published at successful query end, with publication errors
+returned to the caller. Failed queries discard unpublished staging; files
+already published by a multi-file operation remain, as do directory changes.
+An ambiguous commit response is reported as failure and is not blindly retried.
+
+Writes carry the destination's expected revision (`0` for creation); conflicting
+revisions fail with HTTP 409. This is optimistic publication, not a lifetime file
+lock. The current write API compares revisions, not inode identity: a concurrent
+delete/recreate with the same revision is not fenced. Do not use concurrent
+namespace replacement as a database locking protocol. See the
+[compatibility roadmap](docs/compatibility.md) for the remaining native database requirements.
 
 ## Read-path optimizations
 
@@ -95,7 +139,12 @@ make test
 The tests execute actual DuckDB CLI queries against an instrumented HTTP fixture:
 column/row-group pruning, Hive and recursive globs, encoded paths, query cache
 expiry, signed URL reuse/refresh, credential stripping, invalid ranges, short
-responses, concurrent reads, changed revisions, and read-only enforcement.
+responses, concurrent reads, changed revisions, and database-lock rejection.
+The write tests cover format roundtrips, partition append/overwrite, temporary
+rename, empty files, multipart upload/expiry/abort, concurrent publication,
+deferred EXPORT failures, and remote export/import of tables and views.
+The real TiDB smoke also verifies native COPY uploads, partitioned output,
+temporary-file replacement and export/import following INSERT/UPDATE/DELETE.
 The wide-footer fixture verifies that prefetch reduces two range requests to one.
 
 For the real TiDB-backed inline path, start the updated fs server in local mode
@@ -124,10 +173,9 @@ is an explicit test setting; the server's default remains unchanged.
 
 ## Boundaries
 
-This version supports **read-only Parquet/CSV/JSON and other seekable analytics
-files**. It does not implement writable `.duckdb` databases, WAL/locking,
-`COPY TO tidbfs`, or extent-layout files. Use the existing client/FUSE for those
-workflows. No dataset-wide transaction/snapshot is implied. Inline changes
+This version supports **read/write analytics files**, not writable native
+`.duckdb` database storage, WAL/locking, or extent-layout files. No dataset-wide
+transaction/snapshot is implied. Inline changes
 fail with HTTP 412; single-object reads can finish from their pinned immutable
 generation, or fail if that generation is garbage-collected. Query-level
 caching does not provide a transaction-wide snapshot across SQL statements.

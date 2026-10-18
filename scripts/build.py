@@ -86,7 +86,7 @@ def main():
     subprocess.run(command, check=True)
     # DuckDB v1.4.x scripts/append_metadata.cmake: 8 reversed 32-byte fields,
     # then 256 bytes reserved for a signature. The local build is unsigned.
-    fields = ["4", target, version, "0.1.0", "CPP", "", "", ""]
+    fields = ["4", target, version, "0.2.0", "CPP", "", "", ""]
     if any(len(field.encode()) > 32 for field in fields):
         raise RuntimeError("DuckDB metadata field exceeds 32 bytes")
     with output.open("ab") as handle:

@@ -51,8 +51,19 @@ def main():
         def do_GET(self):
             self.forward()
 
+        def do_PUT(self):
+            self.forward()
+
+        def do_POST(self):
+            self.forward()
+
+        def do_DELETE(self):
+            self.forward()
+
         def forward(self):
-            req = urllib.request.Request(endpoint + self.path, method=self.command,
+            length = int(self.headers.get("Content-Length", "0"))
+            data = self.rfile.read(length) if length else None
+            req = urllib.request.Request(endpoint + self.path, method=self.command, data=data,
                                          headers={k: v for k, v in self.headers.items() if k.lower() != "host"})
             try:
                 response = upstream.open(req, timeout=60)
@@ -75,33 +86,55 @@ def main():
     proxy = Server(("127.0.0.1", 0), Proxy)
     thread = threading.Thread(target=proxy.serve_forever, daemon=True)
     thread.start()
+
+    def query(sql):
+        setup = (f"LOAD {quote(ROOT / 'build/tidbfs.duckdb_extension')}; "
+                 f"CREATE SECRET fs (TYPE tidbfs, ENDPOINT 'http://127.0.0.1:{proxy.server_port}', TOKEN {quote(token)}); "
+                 "SET threads=4; ")
+        result = subprocess.run([duckdb, "-unsigned", "-csv", "-noheader", "-bail"],
+                                input=setup + sql, text=True, capture_output=True, timeout=90)
+        if result.returncode:
+            # CLI diagnostics can echo the secret-bearing setup SQL.
+            error = result.stderr.splitlines()[0] if result.stderr else "no diagnostic"
+            error = error.replace(token, "<redacted>")
+            raise RuntimeError("DuckDB smoke query failed: " + error)
+        return result.stdout.removeprefix("true\n").strip()
+
     try:
         with tempfile.TemporaryDirectory() as tmp:
             parquet = Path(tmp) / "orders.parquet"
             subprocess.run([duckdb, "-c", f"COPY (SELECT i::BIGINT AS id, md5(i::VARCHAR) || md5((i+1)::VARCHAR) || md5((i+2)::VARCHAR) AS payload FROM range(100000) t(i)) TO {quote(parquet)} (FORMAT PARQUET, ROW_GROUP_SIZE 10000);"], check=True)
-            with request("PUT", remote + "/orders.parquet", parquet.read_bytes()) as response:
-                response.read()
+            query(f"COPY (SELECT * FROM read_parquet({quote(parquet)})) "
+                  f"TO 'tidbfs://{remote}/orders.parquet' (FORMAT PARQUET, ROW_GROUP_SIZE 10000);")
             with request("HEAD", remote + "/orders.parquet") as response:
                 if response.headers.get("X-Dat9-Storage-Type") != "db9":
                     raise RuntimeError("This TiDB byte-projection smoke requires DRIVE9_INLINE_THRESHOLD=16777216")
-            report = {"file_bytes": parquet.stat().st_size, "queries": {}}
+                remote_size = int(response.headers["Content-Length"])
+            report = {"file_bytes": remote_size, "queries": {}}
             for name, expression, predicate, expected in [
                 ("narrow", "sum(id)", "WHERE id < 2048", "2096128"),
                 ("wide", "sum(length(payload))", "", "9600000"),
             ]:
                 measurements.clear()
-                sql = (f"LOAD {quote(ROOT / 'build/tidbfs.duckdb_extension')}; "
-                       f"CREATE SECRET fs (TYPE tidbfs, ENDPOINT 'http://127.0.0.1:{proxy.server_port}', TOKEN {quote(token)}); "
-                       f"SET threads=4; SELECT {expression} FROM read_parquet('tidbfs://{remote}/orders.parquet') {predicate};")
-                result = subprocess.run([duckdb, "-unsigned", "-csv", "-noheader", "-bail"],
-                                        input=sql, text=True, capture_output=True, timeout=90)
-                if result.returncode or result.stdout.removeprefix("true\n").strip() != expected:
-                    # Avoid printing SQL: a CLI parser diagnostic can echo credentials.
+                result = query(f"SELECT {expression} FROM read_parquet('tidbfs://{remote}/orders.parquet') {predicate};")
+                if result != expected:
                     raise RuntimeError(f"{name} DuckDB query failed or returned the wrong result")
                 report["queries"][name] = {"result": expected, "body_bytes": sum(m["bytes"] for m in measurements),
                                            "head_requests": sum(m["method"] == "HEAD" for m in measurements),
                                            "range_requests": sum(m["status"] == 206 for m in measurements)}
             assert report["queries"]["narrow"]["body_bytes"] < report["queries"]["wide"]["body_bytes"] / 5
+            query(f"COPY (SELECT i AS id, i % 3 AS bucket FROM range(100) t(i)) "
+                  f"TO 'tidbfs://{remote}/partition' (FORMAT PARQUET, PARTITION_BY(bucket));")
+            assert query(f"SELECT sum(id) FROM read_parquet('tidbfs://{remote}/partition/**/*.parquet');") == "4950"
+            query(f"COPY (SELECT 1 AS id) TO 'tidbfs://{remote}/overwrite.csv' (FORMAT CSV); "
+                  f"COPY (SELECT 9 AS id) TO 'tidbfs://{remote}/overwrite.csv' (FORMAT CSV, USE_TMP_FILE true);")
+            assert query(f"SELECT id FROM read_csv('tidbfs://{remote}/overwrite.csv');") == "9"
+            query("CREATE TABLE items AS SELECT i AS id FROM range(100) t(i); "
+                  "BEGIN; INSERT INTO items VALUES (100); UPDATE items SET id=101 WHERE id=100; "
+                  "DELETE FROM items WHERE id=0; COMMIT; "
+                  f"EXPORT DATABASE 'tidbfs://{remote}/backup' (FORMAT PARQUET);")
+            assert query(f"IMPORT DATABASE 'tidbfs://{remote}/backup'; SELECT count(*), sum(id) FROM items;") == "100,5051"
+            report["write_roundtrips"] = ["Parquet COPY", "partitioned COPY", "temporary-file overwrite", "EXPORT/IMPORT with DML"]
             print(json.dumps(report, indent=2))
     finally:
         proxy.shutdown()
