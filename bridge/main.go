@@ -55,7 +55,7 @@ type session struct {
 	rt       *extent.Runtime
 	files    map[uint64]handle
 	failed   atomic.Bool
-	deadline atomic.Int64
+	deadline atomic.Pointer[time.Time]
 }
 
 var sessions = struct {
@@ -67,13 +67,69 @@ var sessions = struct {
 func (s *session) healthy() error {
 	// Fail closed before the existing 60-second session can expire. In
 	// particular, a process resumed after SIGSTOP cannot revive an old lock.
-	if d := s.deadline.Load(); d != 0 && time.Now().Unix() >= d-5 {
+	if d := s.deadline.Load(); d != nil && !time.Now().Before(*d) {
 		s.failed.Store(true)
 	}
 	if s.failed.Load() {
 		return errors.New("extent session failed or expired; close and reopen, do not replay writes")
 	}
 	return nil
+}
+
+func (s *session) setDeadline(expire int64) {
+	// Retain Go's monotonic clock so a backward wall-clock adjustment cannot
+	// extend an already confirmed session. Keep a five-second safety margin.
+	now := time.Now()
+	deadline := now.Add(time.Unix(expire-5, 0).Sub(now))
+	s.deadline.Store(&deadline)
+}
+
+type metadataRPC func(context.Context, string, json.RawMessage) ([]byte, error)
+
+func (s *session) metadata(ctx context.Context, op string, raw json.RawMessage, invoke metadataRPC) (json.RawMessage, int, error) {
+	if err := s.healthy(); err != nil {
+		return nil, int(syscall.EIO), err
+	}
+	deadline := time.Now().Add(30 * time.Second)
+	if d := s.deadline.Load(); d != nil && d.Before(deadline) {
+		deadline = *d
+	}
+	ctx, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+	body, err := invoke(ctx, op, raw)
+	if err == nil {
+		err = ctx.Err()
+	}
+	if err == nil {
+		err = s.healthy()
+	}
+	if err != nil {
+		// Cancellation cannot retract an already delivered RPC. Treat its
+		// outcome as unknown; never acknowledge or replay it in this session.
+		s.failed.Store(true)
+		return nil, int(syscall.EIO), err
+	}
+	var result struct {
+		Errno *int `json:"errno"`
+	}
+	if json.Unmarshal(body, &result) != nil || result.Errno == nil {
+		s.failed.Store(true)
+		return nil, int(syscall.EIO), errors.New("invalid extent metadata acknowledgement")
+	}
+	if op == "new_session" || op == "refresh_session" {
+		var input struct {
+			Expire int64 `json:"expire"`
+		}
+		if *result.Errno == 0 && json.Unmarshal(raw, &input) == nil {
+			s.setDeadline(input.Expire)
+		} else {
+			s.failed.Store(true)
+		}
+		if err := s.healthy(); err != nil {
+			return nil, int(syscall.EIO), err
+		}
+	}
+	return body, 0, nil
 }
 
 func newSession(r request) (*session, error) {
@@ -90,34 +146,9 @@ func newSession(r request) (*session, error) {
 		return nil, err
 	}
 	transport := extent.NewTransport(func(ctx context.Context, op string, raw json.RawMessage) (json.RawMessage, int, error) {
-		if err := s.healthy(); err != nil {
-			return nil, int(syscall.EIO), err
-		}
-		body, err := c.ExtentMeta(ctx, op, raw)
-		if err != nil {
-			// JuiceFS may retry an uncertain metadata publication. Once the
-			// response is lost, refuse every subsequent RPC in this session.
-			s.failed.Store(true)
-			return nil, int(syscall.EIO), err
-		}
-		var result struct {
-			Errno *int `json:"errno"`
-		}
-		if json.Unmarshal(body, &result) != nil || result.Errno == nil {
-			s.failed.Store(true)
-			return nil, int(syscall.EIO), errors.New("invalid extent metadata acknowledgement")
-		}
-		if op == "new_session" || op == "refresh_session" {
-			var input struct {
-				Expire int64 `json:"expire"`
-			}
-			if *result.Errno == 0 && json.Unmarshal(raw, &input) == nil {
-				s.deadline.Store(input.Expire)
-			} else {
-				s.failed.Store(true)
-			}
-		}
-		return body, 0, nil
+		return s.metadata(ctx, op, raw, func(ctx context.Context, op string, raw json.RawMessage) ([]byte, error) {
+			return c.ExtentMeta(ctx, op, raw)
+		})
 	})
 	s.rt, err = extent.NewRuntime(extent.RuntimeConfig{Transport: transport, Storage: storage, CacheBytes: 64 << 20})
 	if err != nil {

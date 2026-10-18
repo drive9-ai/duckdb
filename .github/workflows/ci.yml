@@ -41,7 +41,7 @@ jobs:
       - name: Prepare existing upstream filesystem and disposable TiDB
         run: |
           python3 -m venv "$RUNNER_TEMP/testenv"
-          "$RUNNER_TEMP/testenv/bin/pip" install pymysql==1.1.1
+          "$RUNNER_TEMP/testenv/bin/pip" install pymysql==1.1.1 boto3==1.42.97
           echo "$RUNNER_TEMP/testenv/bin" >> "$GITHUB_PATH"
           mkdir -p "$RUNNER_TEMP/tidb"
           curl -fsSL --retry 3 https://tiup-mirrors.pingcap.com/tidb-v8.5.3-linux-amd64.tar.gz -o "$RUNNER_TEMP/tidb.tar.gz"
@@ -56,15 +56,22 @@ jobs:
           git -C "$source_dir" checkout --detach FETCH_HEAD
           tags=$(python3 -c 'import sys; sys.path.insert(0,"scripts"); from build_extent import TAGS; print(TAGS)')
           CGO_ENABLED=0 go build -C "$source_dir" -mod=readonly -p=2 -tags "$tags" -o "$RUNNER_TEMP/drive9-server" ./cmd/drive9-server
+          # MinIO's community binaries are no longer distributed. Build a
+          # pinned upstream release for disposable S3 protocol/fault tests.
+          GOBIN="$RUNNER_TEMP" go install github.com/minio/minio@RELEASE.2025-09-07T16-13-09Z
       - name: Native compatibility on the public upstream server
         run: |
           # Full crash/expiry/restart tests target current tidbcloud/fs. Its
           # private checkout is unavailable to this public repository's CI;
           # the public upstream server has older stale-session scheduling.
-          python3 scripts/test_native_live.py --tidb-server "$RUNNER_TEMP/tidb/tidb-server" --fs-server "$RUNNER_TEMP/drive9-server" --skip-restart \
+          python3 scripts/test_native_live.py --tidb-server "$RUNNER_TEMP/tidb/tidb-server" --fs-server "$RUNNER_TEMP/drive9-server" --minio-server "$RUNNER_TEMP/minio" --skip-restart \
             NativeDatabaseTests.test_catalog_transactions_checkpoint_reopen \
             NativeDatabaseTests.test_multiple_databases_and_arbitrary_filename \
             NativeDatabaseTests.test_extent_files_share_the_normal_namespace \
             NativeDatabaseTests.test_external_sort_with_remote_temporary_files \
             NativeDatabaseTests.test_out_of_memory_cleans_up_without_abort \
-            NativeDatabaseTests.test_writer_exclusion_renewal_and_shared_readers
+            NativeDatabaseTests.test_writer_exclusion_renewal_and_shared_readers \
+            NativeDatabaseTests.test_s3_transient_upload_failure_retries_without_duplication \
+            NativeDatabaseTests.test_s3_successful_upload_with_lost_ack_is_safe_to_retry \
+            NativeDatabaseTests.test_s3_transient_download_failure_recovers_in_fresh_process \
+            NativeDatabaseTests.test_s3_truncated_download_never_returns_partial_query_results

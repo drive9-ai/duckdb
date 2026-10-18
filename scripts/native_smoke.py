@@ -18,6 +18,7 @@ import time
 import unittest
 import uuid
 import signal
+from fault_proxy import FaultProxy
 
 ROOT = Path(__file__).resolve().parents[1]
 ENDPOINT = os.environ['DRIVE9_BASE']
@@ -33,9 +34,9 @@ INIT = (f"LOAD {quote(ROOT / 'build/tidbfs.duckdb_extension')}; "
         f"CREATE SECRET fs (TYPE tidbfs, ENDPOINT {quote(ENDPOINT)}, TOKEN {quote(TOKEN)}); ")
 
 
-def sql(statement, fail=False, endpoint=ENDPOINT):
+def sql(statement, fail=False, endpoint=ENDPOINT, timeout=180):
     result = subprocess.run([DUCKDB, '-unsigned', '-bail', '-csv', '-noheader'],
-                            input=INIT.replace(quote(ENDPOINT), quote(endpoint)) + statement, text=True, capture_output=True, timeout=180)
+                            input=INIT.replace(quote(ENDPOINT), quote(endpoint)) + statement, text=True, capture_output=True, timeout=timeout)
     error = result.stderr.replace(TOKEN, '<redacted>')
     if fail:
         if not result.returncode:
@@ -222,6 +223,23 @@ class NativeDatabaseTests(unittest.TestCase):
         self.assertIn('session failed or expired', writer.stderr.read())
         self.assertTrue(sql(self.readonly + 'SELECT sum(n) FROM paused;').endswith('3'))
 
+    def test_delayed_metadata_ack_times_out_without_replay(self):
+        sql(self.attach + 'CREATE TABLE delayed(id INTEGER); CHECKPOINT;')
+        proxy = FaultProxy(ENDPOINT)
+        self.addCleanup(proxy.close)
+        with proxy.mu:
+            proxy.rule = {'method': 'POST', 'op': 'write', 'mode': 'delay_ack', 'count': 1}
+        started = time.monotonic()
+        error = sql(self.attach + 'INSERT INTO delayed VALUES (7);', fail=True, endpoint=proxy.url)
+        self.assertIn('Error', error)
+        self.assertLess(time.monotonic() - started, 45, 'Metadata request did not honor its deadline')
+        with proxy.mu:
+            writes = [e.copy() for e in proxy.events if e['op'] == 'write']
+        self.assertEqual(len(writes), 1, 'Timed-out publication was replayed')
+        self.assertEqual(writes[0]['status'], 200, 'Fault did not follow a successful server write')
+        result = self.recover(self.attach + 'SELECT count(*) FROM delayed; CHECKPOINT;')
+        self.assertIn(result.splitlines()[-1], ('0', '1'))
+
     def test_extent_files_share_the_normal_namespace(self):
         # No hidden /data mapping and no new file tables: normal /v1/fs sees
         # the database, and ordinary tidbfs analytical readers read extent files.
@@ -262,6 +280,96 @@ class NativeDatabaseTests(unittest.TestCase):
         self.assertIn('Out of Memory', error)
         self.assertNotIn('terminating', error)
         self.assertTrue(sql(self.attach + 'SELECT 42;').endswith('42'))
+
+    def object_fault(self, rule=None):
+        endpoint = os.environ.get('TIDBFS_FAULT_PROXY')
+        if not endpoint:
+            self.skipTest('Requires --minio-server and its disposable fault proxy')
+        request = urllib.request.Request(endpoint + '/_tidbfs_fault',
+                    data=json.dumps(rule).encode() if rule is not None else None,
+                    headers={'Authorization': 'Bearer ' + os.environ['TIDBFS_FAULT_TOKEN']})
+        with urllib.request.urlopen(request, timeout=5) as response:
+            return json.load(response)['events']
+
+    def object_fixture(self):
+        self.object_fault({})
+        self.addCleanup(self.object_fault, {})
+        sql(self.attach + "CREATE TABLE objects AS SELECT i, md5(i::VARCHAR) payload FROM range(50000) t(i); CHECKPOINT;")
+
+    def assert_object_rows(self, count=50000):
+        result = sql(self.readonly + 'SELECT count(*),sum(i),sum(length(payload)),count(DISTINCT i),'
+                     'count(*) FILTER(WHERE payload<>md5(i::VARCHAR)) FROM objects;')
+        self.assertTrue(result.endswith(f'{count},{count*(count-1)//2},{count*32},{count},0'), result)
+
+    def test_s3_transient_upload_failure_retries_without_duplication(self):
+        self.object_fixture()
+        self.object_fault({'method': 'PUT', 'mode': 'unavailable', 'count': 2})
+        sql(self.attach + "INSERT INTO objects SELECT i, md5(i::VARCHAR) FROM range(50000,60000) t(i); CHECKPOINT;")
+        events = self.object_fault()
+        self.assertEqual(sum(e['fault'] == 'unavailable' for e in events), 2)
+        self.assert_object_rows(60000)
+
+    def test_s3_successful_upload_with_lost_ack_is_safe_to_retry(self):
+        self.object_fixture()
+        self.object_fault({'method': 'PUT', 'mode': 'drop_ack', 'count': 1})
+        sql(self.attach + "INSERT INTO objects SELECT i, md5(i::VARCHAR) FROM range(50000,60000) t(i); CHECKPOINT;")
+        events = self.object_fault()
+        dropped = [e for e in events if e['fault'] == 'drop_ack']
+        self.assertEqual(len(dropped), 1)
+        self.assertEqual(dropped[0]['status'], 200)
+        retries = [e for e in events if e['method'] == 'PUT' and e['path'] == dropped[0]['path']]
+        self.assertGreaterEqual(len(retries), 2, 'Successful immutable object PUT was not retried')
+        self.assert_object_rows(60000)
+
+    def test_s3_transient_download_failure_recovers_in_fresh_process(self):
+        self.object_fixture()
+        self.object_fault({'method': 'GET', 'mode': 'unavailable', 'count': 2})
+        self.assert_object_rows()
+        self.assertEqual(sum(e['fault'] == 'unavailable' for e in self.object_fault()), 2)
+
+    def test_s3_truncated_download_never_returns_partial_query_results(self):
+        self.object_fixture()
+        self.object_fault({'method': 'GET', 'mode': 'short_read', 'count': 1})
+        self.assert_object_rows()
+        self.assertEqual(sum(e['fault'] == 'short_read' for e in self.object_fault()), 1)
+
+    def test_s3_failed_upload_cannot_acknowledge_commit(self):
+        self.object_fixture()
+        self.object_fault({'method': 'PUT', 'mode': 'denied', 'count': -1})
+        # The upstream runtime permits several minutes of object upload
+        # retries. Wait for its actual terminal failure, rather than killing it
+        # and accidentally treating a client timeout as a rejected COMMIT.
+        error = sql(self.attach + "INSERT INTO objects SELECT i, md5(i::VARCHAR) FROM range(50000,60000) t(i);", fail=True, timeout=480)
+        self.assertIn('Error', error)
+        self.assertTrue(any(e['fault'] == 'denied' for e in self.object_fault()))
+        self.object_fault({})
+        # No write reached S3, so no new WAL record may become visible.
+        self.recover(self.attach + 'CHECKPOINT;')
+        self.assert_object_rows()
+
+    def test_s3_checkpoint_crash_after_upload_recovers_committed_wal(self):
+        self.object_fault({})
+        self.addCleanup(self.object_fault, {})
+        writer = self.hold(self.attach + "SET checkpoint_threshold='1GB'; "
+                           "CREATE TABLE objects AS SELECT i, md5(i::VARCHAR) payload FROM range(50000) t(i);")
+        # Keep the successful object PUT response behind a barrier, before
+        # the extent client can publish its new slice and finish checkpoint.
+        self.object_fault({'method': 'PUT', 'mode': 'hold_ack', 'count': 1})
+        writer.stdin.write('CHECKPOINT;\n')
+        writer.stdin.flush()
+        deadline = time.monotonic() + 90
+        while True:
+            held = [e for e in self.object_fault() if e['fault'] == 'hold_ack' and e.get('status') == 200]
+            if held:
+                break
+            if writer.poll() is not None or time.monotonic() > deadline:
+                self.fail('Checkpoint did not reach the successful S3 upload barrier')
+            time.sleep(0.05)
+        writer.kill()
+        writer.wait(timeout=15)
+        self.object_fault({})
+        self.recover(self.attach + 'CHECKPOINT;')
+        self.assert_object_rows()
 
 
 if __name__ == '__main__':

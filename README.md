@@ -137,9 +137,14 @@ Locks are the existing **advisory inode locks**: one database writer or shared
 readers, with cooperating clients. Ordinary clients that ignore locks must not
 replace a live database or its WAL. The adapter stops after an ambiguous metadata
 response or a missed session deadline; it never reacquires ownership under an
-already-open DuckDB instance. The initial write policy calls existing VFS fsync
+already-open DuckDB instance. Metadata requests are bounded and late successful
+responses cannot revive expired sessions. These checks cannot retract an RPC
+already delivered to the server or fence a client that ignores locks.
+The initial write policy calls existing VFS fsync
 after each write before acknowledging it. This favors correctness over batching.
 See [setup, recovery behavior and live tests](docs/native-database.md).
+The live harness includes disposable MinIO tests for upload/download failures,
+lost responses, truncated reads, failed COMMIT and checkpoint crash recovery.
 
 The value is twofold: analytical files let DuckDB's pruning reach remote byte
 ranges, while native mode lets a process leave SQL state that another process

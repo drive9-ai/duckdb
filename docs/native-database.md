@@ -56,10 +56,18 @@ Metadata transport errors permanently fail that client session. Repeated
 metadata publication attempts from the runtime are blocked after an ambiguous
 response. Immutable object uploads may still use the runtime's normal retries.
 The adapter also refuses I/O and renewal five seconds before its last confirmed
-session deadline if no refresh succeeded. A process paused past expiry cannot
-resume using an old lock. This client guard is not a new server-side fencing
-contract: delayed in-flight RPCs, clock skew and server failover remain explicit
-limits requiring further validation.
+session deadline if no refresh succeeded. A monotonic deadline prevents a
+backward wall-clock adjustment from extending an already confirmed session.
+Metadata requests have a 30-second upper bound, shortened to the remaining
+session lifetime. Responses are checked again before acknowledgement: a late
+successful refresh cannot revive an expired session. A process paused past
+expiry cannot resume using an old lock.
+
+These client guards are not server-side fencing. Cancellation cannot retract
+a request already delivered to the server. The existing extent write protocol
+does not atomically validate session/lock ownership with each write. In-flight
+requests delayed until after ownership changes, clock skew between machines,
+and failover therefore remain outside the guaranteed operating envelope.
 
 Existing sessions refresh approximately every 12 seconds and expire after
 approximately 60 seconds. After SIGKILL, the server's existing stale-session
@@ -102,16 +110,52 @@ analytical reads/writes of extent Parquet; and client/server restart recovery.
 Bridge tests exercise binary data, holes, truncate/regrow, rename replacement,
 unlink with open handles, cross-session locks and fail-closed deadlines.
 
-Public GitHub CI builds a pinned public drive9 server and runs bridge conformance
-plus six native compatibility cases. The full crash, missed-heartbeat and restart
-suite targets current `tidbcloud/fs` and was run locally against that checkout.
+Public GitHub CI builds a pinned public drive9 server and MinIO, then runs bridge
+conformance, six native compatibility cases and four transient S3 fault cases.
+The full crash, missed-heartbeat and restart suite targets current `tidbcloud/fs`.
 That server repository is private; its newer stale-session scheduling is not
 present in the public upstream server used by CI. These recovery tests remain
 enabled by default in this harness; CI lists its narrower selection explicitly.
 
-The local file backend and TiDB unistore test functional ordering and recovery.
-They do not establish S3/GCS performance, TiKV power-loss durability, arbitrary
-network-partition safety, or full DuckDB/POSIX compatibility. Existing ordinary
+## Object-store fault validation
+
+To exercise the S3 protocol with an isolated MinIO service and network fault
+proxy, build a pinned upstream release and add `--minio-server`:
+
+```sh
+python3 -m pip install pymysql==1.1.1 boto3==1.42.97
+GOBIN="$PWD/build" go install github.com/minio/minio@RELEASE.2025-09-07T16-13-09Z
+python3 scripts/test_native_live.py \
+  --tidb-server /path/to/tidb-server \
+  --fs-server /path/to/drive9-server \
+  --minio-server "$PWD/build/minio"
+```
+
+Every service binds to loopback, uses temporary data, and receives fresh test
+credentials. Static extent credentials are enabled only for that disposable
+server. No production bucket or credential is needed. Without `--minio-server`,
+the six object fault cases are explicitly skipped; the native cases still run.
+
+| Fault | Required result |
+| --- | --- |
+| Two S3 PUT 503 responses | Retry immutable objects; committed rows have no duplicates |
+| Successful S3 PUT, response lost | Retry the same object key; fresh-process query checks all values |
+| Two S3 GET 503 responses | Fresh reader returns the complete expected data |
+| Truncated S3 GET body | Retry or error, never return partial successful SQL results; tested path retries successfully |
+| Persistent S3 PUT AccessDenied | COMMIT reports failure; reopening preserves only previous committed rows |
+| Crash during checkpoint after object upload, before slice publication | Recover the previously acknowledged transaction from WAL |
+| Successful metadata write, response delayed beyond 30 seconds | Fail the client, issue no duplicate publication, reopen and reconcile |
+
+The persistent upload test waits for the existing runtime's terminal error
+(up to several minutes of retries), rather than counting a test-process timeout
+as a rejected COMMIT. Bridge conformance also deliberately demonstrates that a
+client opening without a lock can write a file held by a cooperating writer.
+This documents the advisory-lock boundary; it is not a supported database usage.
+
+TiDB unistore and local MinIO validate ordering and S3 protocol fault behavior.
+They do not establish AWS/GCS IAM or credential rotation, production service
+durability, TiKV power-loss durability, arbitrary network-partition safety, or
+full DuckDB/POSIX compatibility. Existing ordinary
 inline/object files are not automatically converted into native extent databases.
 Export/import existing prototype data before using this unreleased replacement;
 no file-volume tables are read, migrated or dropped at runtime.

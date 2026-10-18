@@ -24,7 +24,8 @@ client/server restart checks against disposable TiDB and filesystem services.
 See [the native adapter](native-database.md) for the exact failure scenarios.
 Server-side range validators, binary projections, shared-schema isolation and
 existing extent regressions run with `--fs-source`.
-Public CI runs six native compatibility cases on the public upstream server;
+Public CI runs six native compatibility cases and four transient S3 fault cases
+on the public upstream server and disposable MinIO;
 the complete recovery suite runs against current `tidbcloud/fs`, whose checkout
 is private. The harness defaults to the complete suite, including failure tests.
 
@@ -34,9 +35,11 @@ is private. The harness defaults to the complete suite, including failure tests.
   simultaneous database writer processes or distributed query execution.
 - Existing locks are advisory. Other writers must cooperate; ordinary API
   clients must not replace a live database or its WAL.
-- The client fails closed after transport ambiguity or missed session renewal.
-  This is not transactional server-side fencing of every write. Delayed RPCs,
-  clock skew, TiKV failover and production object stores need more validation.
+- The client fails closed after transport ambiguity, metadata timeout, or missed
+  session renewal. Late acknowledgements cannot revive expired sessions. This
+  does not retract requests already delivered to the server or transactionally
+  fence every write. Delayed request delivery across ownership changes, clock
+  skew and TiKV failover remain unsupported safety boundaries.
 - fsync uses the existing extent durability path. The first version syncs every
   write, trading performance for simple acknowledgement semantics.
 - The C++ extension statically includes a Go runtime and cloud dependencies,
@@ -48,8 +51,11 @@ is private. The harness defaults to the complete suite, including failure tests.
   them; there is no new server-side temporary-file reclamation policy.
 - Native URI globs and automatic conversion of inline/object files into extent
   databases are unsupported. Use analytical globs and explicit export/import.
-- Full SQLLogicTest coverage, checkpoint-boundary fault sweeps, S3/GCS failure
-  testing and broader platform/version coverage remain open.
+- S3 faults are tested using real MinIO and a loopback fault proxy: upload and
+  download 503, lost upload response, truncated download, persistent upload
+  failure, and checkpoint crash after upload. AWS/GCS production credentials,
+  service-specific failures, full checkpoint-boundary sweeps, SQLLogicTest and
+  broader platform/version coverage remain open.
 
 Analytical publication uses existing revision CAS. Individual file publication
 is conditional; a multi-file export is not atomic and is not rolled back with
