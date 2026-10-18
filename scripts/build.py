@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import platform
 import shlex
+import shutil
 import subprocess
 import urllib.request
 
@@ -14,24 +15,56 @@ ROOT = Path(__file__).resolve().parents[1]
 JSON_SHA256 = "9bea4c8066ef4a1c206b2be5a36302f8926f7fdc6087af5d20b417d0cf103ea6"
 
 
+def build_linux(args, version, target, build):
+    source = Path(args.source).resolve()
+    if not (source / "src/include/duckdb/common/file_system.hpp").is_file():
+        raise RuntimeError("--source must point to the matching DuckDB source checkout")
+    cmake_build = build / "duckdb"
+    flags = os.environ.get("CXXFLAGS", "")
+    if target.endswith("_gcc4"):
+        flags += " -D_GLIBCXX_USE_CXX11_ABI=0"
+    command = ["cmake", "-S", str(source), "-B", str(cmake_build),
+               "-DCMAKE_BUILD_TYPE=Release", "-DBUILD_UNITTESTS=OFF", "-DBUILD_SHELL=OFF",
+               "-DDISABLE_BUILTIN_EXTENSIONS=ON", "-DEXTENSION_STATIC_BUILD=ON",
+               "-DOVERRIDE_GIT_DESCRIBE=" + version + "-0-g0123456789",
+               "-DDUCKDB_EXTENSION_CONFIGS=" + str(ROOT / "extension_config.cmake"),
+               "-DCMAKE_CXX_COMPILER=" + os.environ.get("CXX", "c++"),
+               "-DCMAKE_CXX_FLAGS=" + flags]
+    command += shlex.split(os.environ.get("CMAKE_ARGS", ""))
+    subprocess.run(command, check=True)
+    subprocess.run(["cmake", "--build", str(cmake_build), "--target", "tidbfs_loadable_extension",
+                    "--parallel", os.environ.get("BUILD_JOBS", "2")], check=True)
+    output = build / "tidbfs.duckdb_extension"
+    shutil.copyfile(cmake_build / "extension/tidbfs/tidbfs.duckdb_extension", output)
+    verify(args.duckdb, output, version, target)
+
+
+def verify(duckdb, output, version, target):
+    subprocess.run([duckdb, "-unsigned", "-c", "LOAD '" + str(output).replace("'", "''") + "';"], check=True)
+    print(f"Built and loaded {output} ({version}, {target})")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--duckdb", default=os.environ.get("DUCKDB", "duckdb"))
     parser.add_argument("--include", default=os.environ.get("DUCKDB_INCLUDE", "/opt/homebrew/opt/duckdb/include"))
-    parser.add_argument("--static-library", default=os.environ.get("DUCKDB_STATIC_LIBRARY"),
-                        help="matching libduckdb_static.a (required on Linux)")
+    parser.add_argument("--source", default=os.environ.get("DUCKDB_SOURCE"),
+                        help="matching DuckDB source checkout (required on Linux)")
     args = parser.parse_args()
     includes = Path(args.include).resolve()
-    if not (includes / "duckdb/common/file_system.hpp").is_file():
-        parser.error("--include must point to the matching DuckDB C++ SDK (or DuckDB src/include)")
     system = platform.system()
-    if system == "Linux" and (not args.static_library or not Path(args.static_library).is_file()):
-        parser.error("Linux requires --static-library /path/to/matching/libduckdb_static.a")
-    if args.static_library and system != "Linux":
-        parser.error("--static-library is currently supported only on Linux")
+    if system == "Darwin" and not (includes / "duckdb/common/file_system.hpp").is_file():
+        parser.error("--include must point to the matching DuckDB C++ SDK (or DuckDB src/include)")
+    if system == "Linux" and not args.source:
+        parser.error("Linux requires --source /path/to/matching/duckdb and CMake")
+    if system not in ("Darwin", "Linux"):
+        parser.error("This build script supports macOS and Linux")
     version = subprocess.check_output([args.duckdb, "-csv", "-noheader", "-c", "SELECT version()"], text=True).strip()
     target = subprocess.check_output([args.duckdb, "-csv", "-noheader", "-c", "PRAGMA platform"], text=True).strip()
     build = ROOT / "build"
+    if system == "Linux":
+        build_linux(args, version, target, build)
+        return
     deps = build / "deps"
     deps.mkdir(parents=True, exist_ok=True)
     header = deps / "json.hpp"
@@ -46,20 +79,9 @@ def main():
     output = build / "tidbfs.duckdb_extension"
     command = [os.environ.get("CXX", "c++"), "-std=c++17", "-O2", "-DNDEBUG", "-fPIC", "-Wall", "-Wextra",
                "-Wno-unused-parameter", "-Wno-deprecated-declarations", "-I" + str(includes), "-I" + str(deps)]
-    if system == "Darwin":
-        command += ["-dynamiclib", "-undefined", "dynamic_lookup"]
-    elif system == "Linux":
-        # Match DuckDB's EXTENSION_STATIC_BUILD: official Linux CLIs do not
-        # export all C++ filesystem symbols. Hide the linked DuckDB copy.
-        command += ["-shared", "-fvisibility=hidden", "-ffunction-sections", "-fdata-sections"]
-        if target.endswith("_gcc4"):
-            command += ["-D_GLIBCXX_USE_CXX11_ABI=0"]
-    else:
-        parser.error("This build script supports macOS and Linux")
+    command += ["-dynamiclib", "-undefined", "dynamic_lookup"]
     command += shlex.split(os.environ.get("CXXFLAGS", ""))
     command += [str(ROOT / "src/tidbfs_extension.cpp"), "-o", str(output)]
-    if system == "Linux":
-        command += [str(Path(args.static_library).resolve()), "-Wl,--gc-sections", "-Wl,--exclude-libs,ALL", "-pthread", "-ldl"]
     command += ["-lcurl"]
     subprocess.run(command, check=True)
     # DuckDB v1.4.x scripts/append_metadata.cmake: 8 reversed 32-byte fields,
@@ -72,8 +94,7 @@ def main():
         for field in reversed(fields):
             handle.write(field.encode().ljust(32, b"\x00"))
         handle.write(bytes(256))
-    subprocess.run([args.duckdb, "-unsigned", "-c", "LOAD '" + str(output).replace("'", "''") + "';"], check=True)
-    print(f"Built and loaded {output} ({version}, {target})")
+    verify(args.duckdb, output, version, target)
 
 
 if __name__ == "__main__":
