@@ -37,6 +37,7 @@ def build_linux(args, version, target, build):
                     "--parallel", os.environ.get("BUILD_JOBS", "2")], check=True)
     output = build / "tidbfs.duckdb_extension"
     shutil.copyfile(cmake_build / "extension/tidbfs/tidbfs.duckdb_extension", output)
+    shutil.copyfile(cmake_build / "extension/tidbfs/libtidbfs_extent.so", build / "libtidbfs_extent.so")
     verify(args.duckdb, output, version, target)
 
 

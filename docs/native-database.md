@@ -95,6 +95,14 @@ python3 scripts/test_native_live.py \
   --fs-source /path/to/fs
 ```
 
+Linux links the Go adapter as adjacent `libtidbfs_extent.so`, with a relative
+`$ORIGIN` search path; macOS includes its static archive. A Go archive linked
+directly into DuckDB's ELF image makes its TLS allocation exceed glibc's dynamic
+loading reserve ([Go issue #48596](https://github.com/golang/go/issues/48596)).
+`scripts/install.py` installs the extension plus Linux runtime together and
+verifies `LOAD tidbfs`. Both direct build-directory loading and installed loading
+are checked in Linux CI. No `LD_PRELOAD` or loader tuning is required.
+
 The harness creates disposable TiDB and filesystem processes, databases, object
 storage, keys and paths. It runs bridge conformance, native SQL and recovery
 checks. `--fs-source` additionally runs relevant server read/extent/schema tests.

@@ -17,7 +17,12 @@ def build(output):
     output = Path(output).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, CGO_ENABLED='1')
-    subprocess.run(['go', 'build', '-mod=readonly', '-tags', TAGS, '-buildmode=c-archive',
+    # Go c-archive marks the entire final ELF as STATIC_TLS. Combining that
+    # with DuckDB's TLS exceeds glibc's dlopen reserve (golang/go#48596).
+    # Keep Go in its own small-TLS DSO on Linux; macOS keeps one static bundle.
+    shared = output.suffix == '.so'
+    flags = ['-buildmode=c-shared', '-ldflags=-extldflags=-Wl,-soname,' + output.name] if shared else ['-buildmode=c-archive']
+    subprocess.run(['go', 'build', '-mod=readonly', '-tags', TAGS] + flags + [
                     '-o', str(output), '.'], cwd=ROOT / 'bridge', env=env, check=True)
 
 

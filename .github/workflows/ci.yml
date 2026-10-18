@@ -37,7 +37,9 @@ jobs:
       - name: Build, load, and test the native extension
         env:
           CMAKE_ARGS: -DCURL_LIBRARY=/usr/lib/x86_64-linux-gnu/libcurl.so -DCURL_INCLUDE_DIR=/usr/include/x86_64-linux-gnu
-        run: make test
+        run: |
+          make test
+          python3 scripts/install.py --directory "$RUNNER_TEMP/installed-extensions"
       - name: Prepare existing upstream filesystem and disposable TiDB
         run: |
           python3 -m venv "$RUNNER_TEMP/testenv"

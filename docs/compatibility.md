@@ -42,9 +42,11 @@ is private. The harness defaults to the complete suite, including failure tests.
   skew and TiKV failover remain unsupported safety boundaries.
 - fsync uses the existing extent durability path. The first version syncs every
   write, trading performance for simple acknowledgement semantics.
-- The C++ extension statically includes a Go runtime and cloud dependencies,
-  increasing build time and binary size. JSON/base64 inside its C ABI adds
-  copies. It requires no helper daemon, FUSE mount, or Go installation at runtime.
+- The C++ adapter includes a Go runtime and cloud dependencies, increasing build
+  time and binary size. Linux ships the runtime as an adjacent shared library;
+  use `scripts/install.py` to install both files. macOS links it statically.
+  JSON/base64 inside its C ABI adds copies. It requires no helper daemon, FUSE
+  mount, or Go installation at runtime.
 - Native mode inherits existing extent backend/permission limits, including
   rejection of subtree-scoped server tokens. It adds no 1 GiB database cap.
 - Named spill files can remain after a crash. Normal DuckDB cleanup removes

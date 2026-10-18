@@ -12,16 +12,23 @@ file(DOWNLOAD
   TLS_VERIFY ON)
 include_directories("${CMAKE_CURRENT_BINARY_DIR}/deps")
 set(SOURCES src/tidbfs_extension.cpp)
-set(EXTENT_ARCHIVE "${CMAKE_CURRENT_BINARY_DIR}/libtidbfs_extent.a")
+if(APPLE)
+  set(EXTENT_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/libtidbfs_extent.a")
+else()
+  set(EXTENT_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/libtidbfs_extent.so")
+endif()
 file(GLOB_RECURSE EXTENT_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/bridge/*.go")
-add_custom_command(OUTPUT "${EXTENT_ARCHIVE}"
-  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/build_extent.py" "${EXTENT_ARCHIVE}"
+add_custom_command(OUTPUT "${EXTENT_LIBRARY}"
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/build_extent.py" "${EXTENT_LIBRARY}"
   DEPENDS ${EXTENT_SOURCE} bridge/go.mod bridge/go.sum scripts/build_extent.py
   WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
-add_custom_target(tidbfs_extent DEPENDS "${EXTENT_ARCHIVE}")
+add_custom_target(tidbfs_extent DEPENDS "${EXTENT_LIBRARY}")
 build_loadable_extension(tidbfs "" ${SOURCES})
 add_dependencies(tidbfs_loadable_extension tidbfs_extent)
-target_link_libraries(tidbfs_loadable_extension "${EXTENT_ARCHIVE}" CURL::libcurl Threads::Threads ${CMAKE_DL_LIBS} resolv)
+target_link_libraries(tidbfs_loadable_extension "${EXTENT_LIBRARY}" CURL::libcurl Threads::Threads ${CMAKE_DL_LIBS} resolv)
 if(APPLE)
   target_link_libraries(tidbfs_loadable_extension "-framework CoreFoundation" "-framework Security")
+else()
+  set_target_properties(tidbfs_loadable_extension PROPERTIES
+    BUILD_WITH_INSTALL_RPATH TRUE INSTALL_RPATH "$ORIGIN")
 endif()

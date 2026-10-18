@@ -70,6 +70,14 @@ through stdin rather than placing credentials in process arguments.
 The build is unsigned and is not published to DuckDB's extension repository.
 `INSTALL tidbfs` from a public repository is not available yet.
 
+Linux builds produce `tidbfs.duckdb_extension` and `libtidbfs_extent.so`;
+keep them in the same directory when using `LOAD '/path/tidbfs.duckdb_extension'`.
+To install into DuckDB's extension directory, run `python3 scripts/install.py`;
+it installs both files and verifies `LOAD tidbfs`. Plain SQL `INSTALL` copies
+only the extension, so it is insufficient for the Linux bundle. The separate
+runtime avoids glibc's static TLS limit when loading Go together with DuckDB.
+macOS builds contain the runtime in the extension itself.
+
 ## Write support and compatibility
 
 | Operation | Support |
@@ -113,7 +121,7 @@ as `/v1/fs/warehouse.duckdb`; its WAL is `/warehouse.duckdb.wal`. There is no
 separate volume, hidden `/data` mapping, new server endpoint, schema or feature
 flag. Ordinary listing and metadata APIs see these files.
 
-The C++ adapter calls a statically linked, pinned drive9 extent client through
+The C++ adapter calls a pinned, in-process drive9 extent client through
 a small in-process C ABI. That client already implements object blocks, caches,
 metadata sessions, POSIX locks and fsync. Metadata uses `/v1/extent/meta`,
 credentials use `/v1/data-credential`, and bytes use the existing object store.
