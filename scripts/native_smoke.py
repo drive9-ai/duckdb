@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Live conformance tests; requires the opt-in fs database protocol and TiDB.
+"""Live conformance tests; requires the generic leased file-volume API and TiDB.
 
 Uses fresh database names. Never runs against or modifies an existing database.
 The crash/heartbeat checks deliberately span the 30-second server lease.

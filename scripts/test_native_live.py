@@ -70,7 +70,7 @@ def main():
             print('Disposable TiDB ready', flush=True)
             # Never inherit a production DRIVE9 configuration into this harness.
             env = {k: v for k, v in os.environ.items() if not k.startswith('DRIVE9_')}
-            env.update(DRIVE9_TENANT_PROVIDER='local', DRIVE9_EXPERIMENTAL_DUCKDB='1',
+            env.update(DRIVE9_TENANT_PROVIDER='local', DRIVE9_EXPERIMENTAL_FILE_VOLUMES='1',
                        DRIVE9_LISTEN_ADDR='127.0.0.1:' + str(fs_port),
                        DRIVE9_LOCAL_DSN=f'root@tcp(127.0.0.1:{sql_port})/tidbfs_live?parseTime=true',
                        DRIVE9_S3_DIR=tmp + '/objects', DRIVE9_TOKEN_SIGNING_KEY=secrets.token_hex(32),
@@ -100,10 +100,11 @@ def main():
                 with open(log_dir / 'go-tests.log', 'w') as output:
                     subprocess.run(['go', 'test', './pkg/datastore', './pkg/server', './pkg/tenant/schema',
                                     './cmd/drive9-server', '-p=1', '-count=1', '-run',
-                                    'TestDuckDB|TestFileRead|TestStatForRead|TestSharedTiDBSchemaStatementsContainsAllTables|TestCurrentSharedTiDBSchemaVersionIsDerivedFromSharedStatements|Test.*DumpInitSQL'],
+                                    'TestFileVolume|TestFileRead|TestStatForRead|TestSharedTiDBSchemaStatementsContainsAllTables|TestCurrentSharedTiDBSchemaVersionIsDerivedFromSharedStatements|Test.*DumpInitSQL'],
                                    cwd=args.fs_source, env=test_env, stdout=output, stderr=output, check=True)
                 print('Go storage, isolation, protocol, range and schema regressions passed', flush=True)
             env.update(DRIVE9_BASE=endpoint, DRIVE9_API_KEY=token)
+            subprocess.run(['python3', 'scripts/file_volume_smoke.py'], cwd=ROOT, env=env, check=True)
             subprocess.run(['python3', 'scripts/native_smoke.py'] + args.tests, cwd=ROOT, env=env, check=True)
             if not args.skip_restart:
                 # Acknowledge a transaction without checkpointing, kill both the

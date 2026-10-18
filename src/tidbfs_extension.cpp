@@ -1123,6 +1123,7 @@ public:
 	}
 };
 
+#include "file_volume.hpp"
 #include "native_database.hpp"
 
 unique_ptr<BaseSecret> CreateTiDBSecret(ClientContext &, CreateSecretInput &input) {

@@ -19,82 +19,12 @@ struct DatabasePath {
 		if (!name.empty() && name[0] != '.')
 			throw InvalidInputException("Invalid database sidecar URI");
 	}
+	string FilePath(bool directory = false) const { return "/data" + name + (directory ? "/" : ""); }
 };
 
-nlohmann::json DatabaseRPC(const Config &config, nlohmann::json request) {
-	HTTP http;
-	auto response = PostJSON(http, config, "/v1/duckdb", request);
-	if (response.status == 501)
-		throw IOException("Enable experimental DuckDB storage on a local-provider fs server");
-	if (response.status == 409)
-		throw IOException("Remote DuckDB database is locked or the file already exists");
-	if (response.status == 410)
-		throw IOException("Remote DuckDB lease expired; reopen the database");
-	auto result = JSON(response);
-	if (JSONNumber(result, "version") != 1)
-		throw IOException("Unsupported remote database protocol version");
-	return result;
-}
-
-struct DatabaseLease {
-	Config config;
-	string root, token;
-	bool read_only;
+struct DatabaseLease : FileVolumeLease {
+	using FileVolumeLease::FileVolumeLease;
 	std::atomic<bool> main_open{false};
-	std::mutex mu;
-	std::condition_variable cv;
-	bool stopped = false, failed = false;
-	std::thread heartbeat;
-	DatabaseLease(Config cfg, string path, bool ro, bool create)
-	    : config(std::move(cfg)), root(std::move(path)), read_only(ro) {
-		auto result =
-		    DatabaseRPC(config, {{"op", "acquire"}, {"database", root}, {"read_only", ro}, {"create", create}});
-		token = JSONString(result, "token");
-		if (JSONNumber(result, "lease_ms") != 30000)
-			throw IOException("Unsupported remote database lease duration");
-		heartbeat = std::thread([this] {
-			std::unique_lock<std::mutex> lock(mu);
-			while (!cv.wait_for(lock, std::chrono::seconds(5), [this] { return stopped; })) {
-				lock.unlock();
-				try {
-					Call({{"op", "renew"}});
-				} catch (...) {
-					lock.lock();
-					failed = true;
-					break;
-				}
-				lock.lock();
-			}
-		});
-	}
-	~DatabaseLease() {
-		{
-			std::lock_guard<std::mutex> lock(mu);
-			stopped = true;
-			cv.notify_all();
-		}
-		if (heartbeat.joinable())
-			heartbeat.join();
-		// No dirty bytes are buffered by this filesystem. A lost release response
-		// only delays the next owner until server-clock expiry; never retry it.
-		try {
-			DatabaseRPC(config, {{"op", "release"}, {"database", root}, {"token", token}});
-		} catch (...) {
-		}
-	}
-	nlohmann::json Call(nlohmann::json request) {
-		std::lock_guard<std::mutex> lock(mu);
-		if (failed)
-			throw IOException("Remote DuckDB session failed; reopen the database (do not retry a commit)");
-		request["database"] = root;
-		request["token"] = token;
-		try {
-			return DatabaseRPC(config, std::move(request));
-		} catch (...) {
-			failed = true;
-			throw;
-		}
-	}
 };
 
 struct DatabaseHandle : FileHandle {
@@ -163,7 +93,8 @@ class TiDBDatabaseFileSystem : public FileSystem {
 	std::mutex mu;
 	std::map<std::tuple<string, string, string>, std::weak_ptr<DatabaseLease>> leases;
 	// DuckDB destroys attached databases before its temporary-directory manager.
-	// Keep ownership until spill cleanup has finished, even after main-file close.
+	// Keep ownership until spill cleanup has finished, even after main-file
+	// close.
 	std::map<std::tuple<string, string, string>, std::shared_ptr<DatabaseLease>> directories;
 	std::shared_ptr<DatabaseLease> Find(const Config &config, const DatabasePath &path) {
 		auto key = std::make_tuple(config.endpoint, config.token, path.root);
@@ -179,7 +110,7 @@ class TiDBDatabaseFileSystem : public FileSystem {
 			throw IOException("Open the remote DuckDB database before accessing its sidecars");
 		return owner;
 	}
-	nlohmann::json Stat(const string &path, optional_ptr<FileOpener> opener) {
+	nlohmann::json Stat(const string &path, optional_ptr<FileOpener> opener, bool directory = false) {
 		auto config = ReadConfig(opener, path);
 		DatabasePath parsed(path);
 		std::shared_ptr<DatabaseLease> owner;
@@ -188,8 +119,8 @@ class TiDBDatabaseFileSystem : public FileSystem {
 			owner = Find(config, parsed);
 		}
 		if (owner)
-			return owner->Call({{"op", "stat"}, {"name", parsed.name}});
-		return DatabaseRPC(config, {{"op", "probe"}, {"database", parsed.root}, {"name", parsed.name}});
+			return owner->Call({{"op", "stat"}, {"path", parsed.FilePath(directory)}});
+		return FileVolumeRPC(config, {{"op", "probe"}, {"volume", parsed.root}, {"path", parsed.FilePath(directory)}});
 	}
 
   public:
@@ -204,7 +135,8 @@ class TiDBDatabaseFileSystem : public FileSystem {
 		if (!flags.OpenForReading() && !flags.OpenForWriting())
 			throw InvalidInputException("Database file requires read or write access");
 		if (flags.CreatePrivateFile())
-			throw NotImplementedException("Remote database permissions are controlled by filesystem credentials");
+			throw NotImplementedException("Remote database permissions are "
+			                              "controlled by filesystem credentials");
 		auto info = Stat(path, opener);
 		bool exists = info.at("exists").get<bool>();
 		if ((!exists && flags.ReturnNullIfNotExists()) || (exists && flags.ReturnNullIfExists()))
@@ -226,7 +158,7 @@ class TiDBDatabaseFileSystem : public FileSystem {
 			throw IOException("Remote DuckDB database is already attached in this instance");
 		try {
 			info = owner->Call({{"op", "open"},
-			                    {"name", parsed.name},
+			                    {"path", parsed.FilePath()},
 			                    {"create", flags.CreateFileIfNotExists() || flags.OverwriteExistingFile()},
 			                    {"truncate", flags.OverwriteExistingFile()},
 			                    {"exclusive", flags.ExclusiveCreate()}});
@@ -309,20 +241,24 @@ class TiDBDatabaseFileSystem : public FileSystem {
 		return info.at("exists").get<bool>() && !info.at("directory").get<bool>();
 	}
 	bool DirectoryExists(const string &path, optional_ptr<FileOpener> opener) override {
-		auto info = Stat(path, opener);
+		auto info = Stat(path, opener, true);
 		return info.at("exists").get<bool>() && info.at("directory").get<bool>();
 	}
 	void CreateDirectory(const string &path, optional_ptr<FileOpener> opener) override {
 		auto owner = Owner(path, opener);
-		owner->Call({{"op", "open"}, {"name", DatabasePath(path).name}, {"create", true}, {"directory", true}});
+		owner->Call({{"op", "open"},
+		             {"path", DatabasePath(path).FilePath(true)},
+		             {"create", true},
+		             {"directory", true},
+		             {"ephemeral", true}});
 		std::lock_guard<std::mutex> lock(mu);
 		directories[std::make_tuple(owner->config.endpoint, owner->config.token,
-		                            owner->root + DatabasePath(path).name)] = owner;
+		                            owner->volume + DatabasePath(path).name)] = owner;
 	}
 	bool TryRemoveFile(const string &path, optional_ptr<FileOpener> opener) override {
 		if (!FileExists(path, opener))
 			return false;
-		Owner(path, opener)->Call({{"op", "remove"}, {"name", DatabasePath(path).name}});
+		Owner(path, opener)->Call({{"op", "remove"}, {"path", DatabasePath(path).FilePath()}});
 		return true;
 	}
 	void RemoveFile(const string &path, optional_ptr<FileOpener> opener) override {
@@ -333,7 +269,7 @@ class TiDBDatabaseFileSystem : public FileSystem {
 	               FileOpener *opener) override {
 		if (!DirectoryExists(path, opener))
 			return false;
-		auto info = Owner(path, opener)->Call({{"op", "list"}, {"name", DatabasePath(path).name}});
+		auto info = Owner(path, opener)->Call({{"op", "list"}, {"path", DatabasePath(path).FilePath(true)}});
 		if (info.contains("entries"))
 			for (auto &entry : info["entries"])
 				callback(JSONString(entry, "name"), entry.at("directory").get<bool>());
@@ -350,17 +286,17 @@ class TiDBDatabaseFileSystem : public FileSystem {
 				RemoveFile(child, opener);
 		}
 		auto owner = Owner(path, opener);
-		owner->Call({{"op", "remove"}, {"name", DatabasePath(path).name}});
+		owner->Call({{"op", "remove"}, {"path", DatabasePath(path).FilePath(true)}});
 		std::lock_guard<std::mutex> lock(mu);
 		directories.erase(
-		    std::make_tuple(owner->config.endpoint, owner->config.token, owner->root + DatabasePath(path).name));
+		    std::make_tuple(owner->config.endpoint, owner->config.token, owner->volume + DatabasePath(path).name));
 	}
 	void MoveFile(const string &source, const string &target, optional_ptr<FileOpener> opener) override {
 		DatabasePath from(source), to(target);
 		auto a = ReadConfig(opener, source), b = ReadConfig(opener, target);
 		if (from.root != to.root || a.endpoint != b.endpoint || a.token != b.token)
 			throw IOException("Cannot move across database namespaces");
-		Owner(source, opener)->Call({{"op", "rename"}, {"name", from.name}, {"target", to.name}});
+		Owner(source, opener)->Call({{"op", "rename"}, {"path", from.FilePath()}, {"target", to.FilePath()}});
 	}
 	vector<OpenFileInfo> Glob(const string &path, FileOpener *) override {
 		if (HasGlob(path))

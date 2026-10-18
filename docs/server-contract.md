@@ -92,7 +92,9 @@ or credentials. Both execute the real DuckDB CLI.
 
 ## Native databases
 
-`tidbfs+db:///` uses a separate, opt-in `/v1/duckdb` protocol. The analytical
+`tidbfs+db:///` adapts the generic, opt-in `/v1/file-volumes` API. The plugin
+selects a volume and maps main/WAL/temp files into ordinary paths; the server
+only implements file storage and ownership. The analytical
 range/multipart contract above does not make ordinary files safe native database
-storage. See [native database protocol](native-database.md) for fencing, durable
+storage. See [native database adapter](native-database.md) for fencing, durable
 pages, lifecycle, server gates and limits.

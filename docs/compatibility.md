@@ -69,7 +69,7 @@ Native mode is an **experimental compatibility implementation**, not a claim
 of 100% DuckDB, POSIX, extension or binary-version compatibility.
 
 - Server requires `DRIVE9_TENANT_PROVIDER=local` and
-  `DRIVE9_EXPERIMENTAL_DUCKDB=1`. Only unscoped filesystem tokens are accepted.
+  `DRIVE9_EXPERIMENTAL_FILE_VOLUMES=1`. Only unscoped filesystem tokens are accepted.
 - Database paths must end in `.duckdb`; that marker is reserved in ancestor
   components. Sidecars and temporary files are managed within that database.
 - Aggregate logical file size is capped at 1 GiB per database, including WAL,
@@ -78,8 +78,8 @@ of 100% DuckDB, POSIX, extension or binary-version compatibility.
   prefetch/batching and performance tuning are future work; no throughput or
   cost advantage over local disk/S3 is claimed.
 - Ordinary fs listing, backup/export, tenant accounting/deletion and permission
-  management do not include the isolated database tables. Back up all four
-  `duckdb_*` tables consistently while stopped; use DuckDB EXPORT for portable
+  management do not include the isolated file-volume tables. Back up all four
+  file-volume tables consistently while stopped; use DuckDB EXPORT for portable
   logical backups. Production enablement is intentionally blocked.
 - Cross-database file moves, directory rename, native-mode globs and POSIX
   private-file permissions are rejected. Use analytical mode for data files.
@@ -95,7 +95,7 @@ Partitioned exports can leave completed files after later failure. Use a fresh
 output directory and publish an application pointer after successful export.
 Revision CAS does not fence delete/recreate ABA, so it is deliberately never used
 as the native database locking mechanism. See [the analytical server contract](server-contract.md)
-and [the native database protocol](native-database.md).
+and [the native database adapter](native-database.md).
 
 Reference: DuckDB's version-pinned [filesystem contract](https://github.com/duckdb/duckdb/blob/v1.4.2/src/include/duckdb/common/file_system.hpp)
 and [block manager](https://github.com/duckdb/duckdb/blob/v1.4.2/src/storage/single_file_block_manager.cpp).

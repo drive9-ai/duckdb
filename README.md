@@ -106,12 +106,14 @@ namespace replacement as a database locking protocol. See the
 ## Native database mode (experimental)
 
 `tidbfs+db:///warehouse.duckdb` runs DuckDB's own storage engine over remote
-64 KiB TiDB pages. The server checks a renewable lease inside every storage
+the general `/v1/file-volumes` API, backed by 64 KiB TiDB pages. The plugin maps
+database/WAL/spill files to ordinary paths and explicitly marks spill directories
+ephemeral; the server has no DuckDB format or filename rules. The server checks a renewable lease inside every storage
 transaction. Database and WAL writes are durable on acknowledgement; no whole
 file upload is required at COMMIT. Single-writer exclusion, shared readers,
 checkpoint/reopen, client-crash recovery and remote spill have live tests.
 
-Enable `DRIVE9_EXPERIMENTAL_DUCKDB=1` on a **local-provider** fs server and use a
+Enable `DRIVE9_EXPERIMENTAL_FILE_VOLUMES=1` on a **local-provider** fs server and use a
 secret scoped to `tidbfs+db:///`. The initial implementation has a 1 GiB limit
 per database and is not integrated with production fs backup, billing or tenant
 deletion. This is progress toward compatibility, not a 100% compatibility claim.
