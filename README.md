@@ -150,8 +150,11 @@ readers, with cooperating clients. Ordinary clients that ignore locks must not
 replace a live database or its WAL. The adapter stops after an ambiguous metadata
 response or a missed session deadline; it never reacquires ownership under an
 already-open DuckDB instance. Metadata requests are bounded and late successful
-responses cannot revive expired sessions. These checks cannot retract an RPC
-already delivered to the server or fence a client that ignores locks.
+responses cannot revive expired sessions. The shared extent transport also carries
+the existing session ID; servers advertising `session_guard: true` validate it in
+the same transaction as each metadata mutation, rejecting delayed old-session
+writes after cleanup. Older servers retain legacy behavior. Advisory locks still
+require cooperating clients.
 The initial write policy calls existing VFS fsync
 after each write before acknowledging it. This favors correctness over batching.
 See [setup, recovery behavior and live tests](docs/native-database.md).

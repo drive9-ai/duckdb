@@ -36,10 +36,12 @@ is private. The harness defaults to the complete suite, including failure tests.
 - Existing locks are advisory. Other writers must cooperate; ordinary API
   clients must not replace a live database or its WAL.
 - The client fails closed after transport ambiguity, metadata timeout, or missed
-  session renewal. Late acknowledgements cannot revive expired sessions. This
-  does not retract requests already delivered to the server or transactionally
-  fence every write. Delayed request delivery across ownership changes, clock
-  skew and TiKV failover remain unsupported safety boundaries.
+  session renewal. Late acknowledgements cannot revive expired sessions. The
+  shared extent transport carries `caller_sid`; servers advertising
+  `session_guard: true` validate it atomically with metadata mutations and reject
+  old-session requests after cleanup. Older servers lack this guarantee.
+  Advisory locks remain advisory; production TiKV/object-store failover coverage
+  is incomplete.
 - fsync uses the existing extent durability path. The first version syncs every
   write, trading performance for simple acknowledgement semantics.
 - The C++ adapter includes a Go runtime and cloud dependencies, increasing build

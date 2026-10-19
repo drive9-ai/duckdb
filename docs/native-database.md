@@ -63,11 +63,26 @@ session lifetime. Responses are checked again before acknowledgement: a late
 successful refresh cannot revive an expired session. A process paused past
 expiry cannot resume using an old lock.
 
-These client guards are not server-side fencing. Cancellation cannot retract
-a request already delivered to the server. The existing extent write protocol
-does not atomically validate session/lock ownership with each write. In-flight
-requests delayed until after ownership changes, clock skew between machines,
-and failover therefore remain outside the guaranteed operating envelope.
+The shared drive9 extent transport now adds its existing session ID as
+`caller_sid` to metadata requests. On servers advertising `session_guard: true`
+at registration, mutation transactions lock and validate that same session row.
+Cleanup cannot release locks ahead of an admitted write; requests delivered after
+expiry or cleanup are rejected before publishing slices. A collected session
+cannot be revived by a late renewal. This uses the ordinary extent API and
+session table, including for FUSE and other clients; there is no DuckDB lease.
+
+The generic changes are [drive9 #1039](https://github.com/mem9-ai/drive9/pull/1039)
+(client transport) and [fs #241](https://github.com/tidbcloud/fs/pull/241)
+(server transaction guard). The latter repository requires access. The separate
+[fs #238](https://github.com/tidbcloud/fs/pull/238) contains only conditional-read
+and Range improvements and is not the session guard.
+
+Older servers ignore this field and retain their existing behavior, so they do
+not provide this guarantee. The live bridge regression reports that distinction
+and can require it with `TIDBFS_REQUIRE_SESSION_GUARD=1`. Session validation does
+not make advisory locks mandatory or protect against another authorized client
+that deliberately bypasses them. Production object-store and TiKV failover
+coverage remains incomplete; native database support stays experimental.
 
 Existing sessions refresh approximately every 12 seconds and expire after
 approximately 60 seconds. After SIGKILL, the server's existing stale-session
