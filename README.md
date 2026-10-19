@@ -169,6 +169,8 @@ access in a fresh DuckDB instance (~5 s session lifetime; default ~60 s).
 See [timing configuration and tradeoffs](docs/native-database.md#tuning-interrupted-handoff).
 The [local tuning benchmark](docs/benchmarks/handoff-tuning-2026-10-18.md) measured
 4.75 s median takeover with 1 s heartbeats, versus 57.68 s with the default.
+A [fresh reconnect test](docs/demos/reconnect-test-2026-10-18/README.md) records
+5.33 s takeover, rejected stale COMMIT and full-row validation, with a GIF and raw evidence.
 
 The value is twofold: analytical files let DuckDB's pruning reach remote byte
 ranges, while native mode lets a process leave SQL state that another process

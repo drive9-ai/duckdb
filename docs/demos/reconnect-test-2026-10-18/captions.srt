@@ -1,0 +1,15 @@
+1
+00:00:00,000 --> 00:00:06,000
+One database. One writer.
+
+2
+00:00:06,000 --> 00:00:13,000
+Cut A’s network. Keep A running.
+
+3
+00:00:13,000 --> 00:00:20,000
+B takes over and recovers the WAL.
+
+4
+00:00:20,000 --> 00:00:28,000
+A reconnects. Its COMMIT is rejected.
