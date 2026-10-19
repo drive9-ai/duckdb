@@ -80,6 +80,10 @@ macOS builds contain the runtime in the extension itself.
 
 ## Write support and compatibility
 
+For measured native database handoffs, see the
+[multi-GiB benchmark](docs/benchmarks/handoff-2026-10-18.md), including separate
+flush/close, worker startup, reopen, and client-cold/warm query timings.
+
 | Operation | Support |
 | --- | --- |
 | Read Parquet, CSV, JSON; glob/Hive pruning | Supported |
