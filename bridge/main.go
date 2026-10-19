@@ -28,21 +28,22 @@ import (
 )
 
 type request struct {
-	Op        string `json:"op"`
-	Endpoint  string `json:"endpoint"`
-	Token     string `json:"token"`
-	Session   uint64 `json:"session"`
-	Handle    uint64 `json:"handle"`
-	Path      string `json:"path"`
-	Target    string `json:"target"`
-	Offset    uint64 `json:"offset"`
-	Length    uint64 `json:"length"`
-	Data      []byte `json:"data"`
-	Write     bool   `json:"write"`
-	Create    bool   `json:"create"`
-	Exclusive bool   `json:"exclusive"`
-	Truncate  bool   `json:"truncate"`
-	Lock      string `json:"lock"`
+	Op          string `json:"op"`
+	Endpoint    string `json:"endpoint"`
+	Token       string `json:"token"`
+	Session     uint64 `json:"session"`
+	Handle      uint64 `json:"handle"`
+	Path        string `json:"path"`
+	Target      string `json:"target"`
+	Offset      uint64 `json:"offset"`
+	Length      uint64 `json:"length"`
+	Data        []byte `json:"data"`
+	Write       bool   `json:"write"`
+	Create      bool   `json:"create"`
+	Exclusive   bool   `json:"exclusive"`
+	Truncate    bool   `json:"truncate"`
+	Lock        string `json:"lock"`
+	HeartbeatMS int64  `json:"heartbeat_ms"`
 }
 
 type handle struct {
@@ -56,6 +57,7 @@ type session struct {
 	files    map[uint64]handle
 	failed   atomic.Bool
 	deadline atomic.Pointer[time.Time]
+	margin   time.Duration
 }
 
 var sessions = struct {
@@ -65,7 +67,7 @@ var sessions = struct {
 }{all: make(map[uint64]*session)}
 
 func (s *session) healthy() error {
-	// Fail closed before the existing 60-second session can expire. In
+	// Fail closed before the confirmed session can expire. In
 	// particular, a process resumed after SIGSTOP cannot revive an old lock.
 	if d := s.deadline.Load(); d != nil && !time.Now().Before(*d) {
 		s.failed.Store(true)
@@ -78,9 +80,14 @@ func (s *session) healthy() error {
 
 func (s *session) setDeadline(expire int64) {
 	// Retain Go's monotonic clock so a backward wall-clock adjustment cannot
-	// extend an already confirmed session. Keep a five-second safety margin.
+	// extend an already confirmed session. Short heartbeats keep a full
+	// heartbeat of margin; the default retains its five-second margin.
 	now := time.Now()
-	deadline := now.Add(time.Unix(expire-5, 0).Sub(now))
+	margin := s.margin
+	if margin == 0 {
+		margin = 5 * time.Second
+	}
+	deadline := now.Add(time.Unix(expire, 0).Add(-margin).Sub(now))
 	s.deadline.Store(&deadline)
 }
 
@@ -133,7 +140,14 @@ func (s *session) metadata(ctx context.Context, op string, raw json.RawMessage, 
 }
 
 func newSession(r request) (*session, error) {
-	s := &session{files: make(map[uint64]handle)}
+	heartbeat := 12 * time.Second
+	if r.HeartbeatMS != 0 {
+		if r.HeartbeatMS < 1000 || r.HeartbeatMS > 600000 {
+			return nil, errors.New("extent heartbeat_ms must be between 1000 and 600000")
+		}
+		heartbeat = time.Duration(r.HeartbeatMS) * time.Millisecond
+	}
+	s := &session{files: make(map[uint64]handle), margin: min(5*time.Second, heartbeat)}
 	c := client.New(r.Endpoint, r.Token)
 	ctx, cancel := context.WithTimeout(context.Background(), extent.CredentialMintTimeout)
 	defer cancel()
@@ -150,9 +164,14 @@ func newSession(r request) (*session, error) {
 			return c.ExtentMeta(ctx, op, raw)
 		})
 	})
-	s.rt, err = extent.NewRuntime(extent.RuntimeConfig{Transport: transport, Storage: storage, CacheBytes: 64 << 20})
+	s.rt, err = extent.NewRuntime(extent.RuntimeConfig{Transport: transport, Storage: storage, CacheBytes: 64 << 20,
+		Heartbeat: heartbeat})
 	if err != nil {
 		return nil, err
+	}
+	if heartbeat < 12*time.Second && !transport.SessionGuardSupported() {
+		_ = extent.CloseRuntime(s.rt)
+		return nil, errors.New("short extent heartbeats require a server advertising session_guard")
 	}
 	return s, nil
 }

@@ -177,6 +177,7 @@ struct Config {
 	string endpoint;
 	string token;
 	idx_t read_ahead = 65536;
+	int64_t heartbeat_ms = 12000;
 };
 
 // DuckDB can open one handle per row group. Keep version and object resolution
@@ -220,7 +221,7 @@ Config ReadConfig(optional_ptr<FileOpener> opener, const string &path) {
 	}
 	// The tidbfs secret factory and deserializer both produce KeyValueSecret.
 	auto &secret = static_cast<const KeyValueSecret &>(match.GetSecret());
-	Value endpoint, token, read_ahead;
+	Value endpoint, token, read_ahead, heartbeat;
 	if (!secret.TryGetValue("endpoint", endpoint) || !secret.TryGetValue("token", token)) {
 		throw IOException("tidbfs secret is missing ENDPOINT or TOKEN");
 	}
@@ -240,6 +241,12 @@ Config ReadConfig(optional_ptr<FileOpener> opener, const string &path) {
 			throw InvalidInputException("tidbfs_read_ahead must be between 0 and 1048576 bytes");
 		}
 		config.read_ahead = idx_t(size);
+	}
+	if (FileOpener::TryGetCurrentSetting(opener, "tidbfs_heartbeat_ms", heartbeat)) {
+		config.heartbeat_ms = heartbeat.GetValue<int64_t>();
+		if (config.heartbeat_ms < 1000 || config.heartbeat_ms > 600000) {
+			throw InvalidInputException("tidbfs_heartbeat_ms must be between 1000 and 600000");
+		}
 	}
 	return config;
 }
@@ -1183,6 +1190,9 @@ void LoadTiDBFS(ExtensionLoader &loader) {
 	DBConfig::GetConfig(loader.GetDatabaseInstance()).AddExtensionOption(
 	    "tidbfs_read_ahead", "Bytes to fetch ahead on small reads (0 disables prefetch, max 1 MiB)",
 	    LogicalType::BIGINT, Value::BIGINT(65536));
+	DBConfig::GetConfig(loader.GetDatabaseInstance()).AddExtensionOption(
+	    "tidbfs_heartbeat_ms", "Extent session heartbeat in milliseconds; set before first extent access (expiry = 5x)",
+	    LogicalType::BIGINT, Value::BIGINT(12000));
 	FileSystem::GetFileSystem(loader.GetDatabaseInstance()).RegisterSubSystem(make_uniq<TiDBFileSystem>());
 	FileSystem::GetFileSystem(loader.GetDatabaseInstance()).RegisterSubSystem(make_uniq<TiDBDatabaseFileSystem>());
 }

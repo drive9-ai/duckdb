@@ -223,6 +223,13 @@ class NativeDatabaseTests(unittest.TestCase):
         self.assertIn('session failed or expired', writer.stderr.read())
         self.assertTrue(sql(self.readonly + 'SELECT sum(n) FROM paused;').endswith('3'))
 
+    def test_heartbeat_is_fixed_for_live_extent_client(self):
+        error = sql(self.attach + 'CREATE TABLE heartbeat_config AS SELECT 42 n; CHECKPOINT; '
+                    'SET tidbfs_heartbeat_ms=2000; '
+                    f'ATTACH {quote(self.uri + ".other")} AS other;', fail=True)
+        self.assertIn('fresh DuckDB instance', error)
+        self.assertTrue(sql(self.readonly + 'SELECT n FROM heartbeat_config;').endswith('42'))
+
     def test_delayed_metadata_ack_times_out_without_replay(self):
         sql(self.attach + 'CREATE TABLE delayed(id INTEGER); CHECKPOINT;')
         proxy = FaultProxy(ENDPOINT)

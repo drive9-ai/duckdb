@@ -164,6 +164,9 @@ The [interrupted-handoff demo](docs/demos/interrupted-handoff/README.md) disconn
 a running writer from metadata and S3, waits for another worker to take over,
 then reconnects the old writer and verifies its COMMIT is rejected. It includes
 measured timing, full-row checksums, a GIF/MP4 and the reproducible fault harness.
+For shorter failure handoffs, set `tidbfs_heartbeat_ms=1000` before first extent
+access in a fresh DuckDB instance (~5 s session lifetime; default ~60 s).
+See [timing configuration and tradeoffs](docs/native-database.md#tuning-interrupted-handoff).
 
 The value is twofold: analytical files let DuckDB's pruning reach remote byte
 ranges, while native mode lets a process leave SQL state that another process

@@ -55,8 +55,9 @@ transfers retain the runtime's existing binary protocol.
 Metadata transport errors permanently fail that client session. Repeated
 metadata publication attempts from the runtime are blocked after an ambiguous
 response. Immutable object uploads may still use the runtime's normal retries.
-The adapter also refuses I/O and renewal five seconds before its last confirmed
-session deadline if no refresh succeeded. A monotonic deadline prevents a
+The adapter also refuses I/O and renewal before its last confirmed session
+deadline if no refresh succeeded. The safety margin is the smaller of one
+heartbeat interval and five seconds (five seconds with the default). A monotonic deadline prevents a
 backward wall-clock adjustment from extending an already confirmed session.
 Metadata requests have a 30-second upper bound, shortened to the remaining
 session lifetime. Responses are checked again before acknowledgement: a late
@@ -90,6 +91,47 @@ sweep must release locks before another process opens the database. Recovery
 latency depends on that sweep; there is no fixed 30-second takeover guarantee.
 After an ambiguous COMMIT, reopen and reconcile application state; either the
 committed or aborted outcome may be valid. Never blindly replay the transaction.
+
+### Tuning interrupted handoff
+
+`tidbfs_heartbeat_ms` configures the existing extent runtime's renewal interval.
+The default remains 12,000 ms; the existing runtime derives session expiry as
+five heartbeat intervals. Set it **before the first extent access in a fresh
+DuckDB instance**. Changing it does not replace a live instance's session;
+subsequent opens reject a mismatched setting instead of acquiring new ownership.
+
+```sql
+LOAD 'build/tidbfs.duckdb_extension';
+SET tidbfs_heartbeat_ms = 1000; -- ~1 s heartbeats, ~5 s session lifetime
+-- CREATE SECRET fs (...) with your endpoint/token, then ATTACH ...
+```
+
+Use `2000` for a roughly 10-second lifetime. Accepted values are 1,000–600,000
+ms. Values below the 12,000 ms default require a server advertising
+`session_guard: true`. The bridge retains a full heartbeat of safety margin for
+the 1 s/2 s settings and bounds metadata requests by the remaining safe lifetime;
+an expired or failed session cannot be revived.
+
+On the filesystem server, the existing setting controls maintenance scheduling:
+
+```sh
+DRIVE9_TENANT_MAINTENANCE_INTERVAL=1s /path/to/drive9-server
+```
+
+That test setting replaces the server's default 5-minute maintenance throttle;
+it does not alter session expiry or force-release locks. The interrupted demo
+already used 1 s maintenance, so its original ~58 s wait was mainly session
+expiry. Changing only maintenance cannot remove that wait.
+
+Shorter heartbeats issue more renewal/associated metadata traffic and tolerate
+less latency or scheduler disruption before the client stops. A 1 s interval
+means approximately 12× the renewal frequency of the 12 s default. Takeover also
+depends on cleanup, retry timing and WAL recovery; a 5 s session is not a fixed
+5 s takeover guarantee. Choose settings using the deployment's measured latency.
+
+The same fault harness accepts `--heartbeat-ms 1000 --poll-interval 0.2`.
+`--healthy-seconds 15` additionally verifies sustained renewal, writer exclusion,
+and an acknowledged write before cutting the connections.
 
 Temporary files follow ordinary extent lifecycle. DuckDB removes its spill
 directory on normal cleanup; a crashed process can leave named temporary files.

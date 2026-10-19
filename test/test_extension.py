@@ -373,6 +373,17 @@ class ExtensionTest(unittest.TestCase):
                 self.query(f"SELECT * FROM read_parquet({sql_string(path)});", ok=False)
                 self.assertEqual(self.fixture.requests, [])
 
+    def test_heartbeat_configuration_bounds(self):
+        out, _ = self.query("SELECT current_setting('tidbfs_heartbeat_ms');")
+        self.assertEqual(out, '12000')
+        for ms in (-1, 0, 999, 600001):
+            with self.subTest(heartbeat_ms=ms):
+                self.fixture.requests.clear()
+                _, error = self.query(f"SET tidbfs_heartbeat_ms={ms}; "
+                                      "SELECT * FROM read_csv('tidbfs:///data/items.csv');", ok=False)
+                self.assertIn('tidbfs_heartbeat_ms must be between 1000 and 600000', error)
+                self.assertEqual(self.fixture.requests, [])
+
     def test_copy_formats_and_overwrite(self):
         for format in ("PARQUET", "CSV", "JSON"):
             with self.subTest(format=format):

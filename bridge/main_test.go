@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -20,6 +21,37 @@ func TestSessionStopsBeforeExpiryAndStaysFailed(t *testing.T) {
 	s.setDeadline(time.Now().Unix() + 60)
 	if s.healthy() == nil {
 		t.Fatal("failed session was revived")
+	}
+}
+
+func TestShortSessionKeepsMarginAndFailsPermanently(t *testing.T) {
+	s := &session{margin: time.Second}
+	s.setDeadline(time.Now().Unix() + 5)
+	if err := s.healthy(); err != nil {
+		t.Fatalf("fresh five-second session rejected: %v", err)
+	}
+	_, _, err := s.metadata(context.Background(), "write", nil, func(ctx context.Context, _ string, _ json.RawMessage) ([]byte, error) {
+		deadline, ok := ctx.Deadline()
+		if !ok || time.Until(deadline) > 4*time.Second {
+			t.Fatal("short session did not bound request by its remaining lifetime")
+		}
+		s.setDeadline(time.Now().Unix() + 1)
+		return []byte(`{"errno":0}`), nil
+	})
+	if err == nil {
+		t.Fatal("accepted a write acknowledged inside the expiry margin")
+	}
+	s.setDeadline(time.Now().Unix() + 5)
+	if s.healthy() == nil {
+		t.Fatal("failed short session was revived")
+	}
+}
+
+func TestInvalidHeartbeatRejectedBeforeConnecting(t *testing.T) {
+	for _, ms := range []int64{-1, 999, 600001, 1 << 62} {
+		if _, err := newSession(request{HeartbeatMS: ms}); err == nil || !strings.Contains(err.Error(), "heartbeat_ms") {
+			t.Fatalf("heartbeat=%d err=%v", ms, err)
+		}
 	}
 }
 

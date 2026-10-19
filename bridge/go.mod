@@ -4,7 +4,7 @@ go 1.25.1
 
 require (
 	github.com/juicedata/juicefs v1.4.1
-	github.com/mem9-ai/drive9 v0.10.1-0.20261019021742-153cca5271a7
+	github.com/mem9-ai/drive9 v0.10.1-0.20261019032931-67deed055d66
 )
 
 require (

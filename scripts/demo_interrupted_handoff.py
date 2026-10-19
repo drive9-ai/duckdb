@@ -46,6 +46,9 @@ def main():
     p.add_argument('--maintenance-interval', default='1s')
     p.add_argument('--takeover-timeout', type=float, default=180)
     p.add_argument('--poll-interval', type=float, default=1)
+    p.add_argument('--heartbeat-ms', type=int, default=12000)
+    p.add_argument('--healthy-seconds', type=float, default=0,
+                   help='Before disconnecting, verify renewal and writer exclusion for this long')
     p.add_argument('--log-dir', required=True)
     args = p.parse_args()
     args.threads, args.memory_limit = 4, '2GB'
@@ -67,6 +70,8 @@ def main():
                   backend='Single-host loopback; TiDB unistore + RustFS S3',
                   fault='Socket shutdown and connection rejection on A metadata and S3 routes; B uses independent routes',
                   maintenance_interval=args.maintenance_interval, poll_interval_seconds=args.poll_interval,
+                  heartbeat_ms=args.heartbeat_ms, session_ttl_seconds=args.heartbeat_ms * 5 / 1000,
+                  healthy_seconds=args.healthy_seconds,
                   initial_rows=args.rows, events=[], attempts=[], complete=False)
 
     def save():
@@ -88,6 +93,7 @@ def main():
     def worker(name, endpoint):
         child = Worker(args, endpoint, token, logs, name)
         workers.append(child)
+        child.execute(f'SET tidbfs_heartbeat_ms={args.heartbeat_ms}')
         return child
 
     with tempfile.TemporaryDirectory(prefix='runtime-', dir=logs) as tmp:
@@ -167,6 +173,30 @@ def main():
                       f'INSERT INTO ledger SELECT i, md5(i::VARCHAR) FROM range({args.rows}) t(i); CHECKPOINT remote')
             a.execute('INSERT INTO ledger VALUES ' + values(args.rows))
             report['before_partition'] = verify(a, args.rows + 1)
+            if args.healthy_seconds:
+                healthy_started = time.monotonic()
+                checks = 0
+                while time.monotonic() - healthy_started < args.healthy_seconds:
+                    contender = worker('healthy-contender-' + str(checks), endpoint)
+                    try:
+                        contender.execute(attach, timeout=30)
+                    except RuntimeError as error:
+                        if 'locked' not in str(error).lower():
+                            raise
+                    else:
+                        raise AssertionError('Healthy writer lost exclusion')
+                    finally:
+                        contender.stop()
+                    a.execute('SELECT count(*) FROM ledger')
+                    checks += 1
+                    time.sleep(1)
+                # A real acknowledged write after several TTLs, without changing
+                # expected data or truncating the already committed WAL.
+                a.execute("UPDATE ledger SET payload=md5(id::VARCHAR) WHERE id=0")
+                report['healthy_renewal'] = dict(seconds=time.monotonic() - healthy_started,
+                                                excluded_contenders=checks,
+                                                checksum=verify(a, args.rows + 1)['sha256'])
+                event('healthy_renewal_verified', **report['healthy_renewal'])
             headers, _ = get(endpoint + '/v1/fs' + uri_path + '.wal', 'HEAD', True)
             report['wal_bytes_before_partition'] = int(headers['Content-Length'])
             assert report['wal_bytes_before_partition'] > 0, 'Need a real committed WAL to recover'

@@ -23,9 +23,11 @@ string ExtentPath(const string &input) {
 
 struct ExtentClient {
 	uint64_t session;
-	explicit ExtentClient(const Config &config) {
+	int64_t heartbeat_ms;
+	explicit ExtentClient(const Config &config) : heartbeat_ms(config.heartbeat_ms) {
 		session = uint64_t(JSONNumber(
-			ExtentCall({{"op", "connect"}, {"endpoint", config.endpoint}, {"token", config.token}}), "session"));
+			ExtentCall({{"op", "connect"}, {"endpoint", config.endpoint}, {"token", config.token},
+			            {"heartbeat_ms", config.heartbeat_ms}}), "session"));
 	}
 	~ExtentClient() {
 		try {
@@ -113,6 +115,8 @@ class TiDBDatabaseFileSystem : public FileSystem {
 		auto &c = clients[{config.endpoint, config.token}];
 		if (!c)
 			c = std::make_shared<ExtentClient>(config);
+		else if (c->heartbeat_ms != config.heartbeat_ms)
+			throw InvalidInputException("Set tidbfs_heartbeat_ms before first extent access; use a fresh DuckDB instance to change it");
 		return c;
 	}
 	nlohmann::json Stat(const string &path, optional_ptr<FileOpener> opener) {
