@@ -1,0 +1,15 @@
+1
+00:00:00,000 --> 00:00:07,000
+Same test. Faster takeover.
+
+2
+00:00:07,000 --> 00:00:13,000
+Cut A’s network. Keep A running.
+
+3
+00:00:13,000 --> 00:00:19,000
+B takes over and recovers the WAL.
+
+4
+00:00:19,000 --> 00:00:26,000
+A reconnects. Its COMMIT is rejected.

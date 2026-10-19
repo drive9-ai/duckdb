@@ -5,6 +5,8 @@ median (4.48–5.28 seconds, three runs)**, compared with **57.68 seconds** for
 the default 12-second heartbeat in the same environment. A 2-second heartbeat
 took **9.72 seconds median (9.72–10.29 seconds, three runs)**.
 
+[26-second GIF and short X reply](../demos/handoff-tuning/README.md)
+
 The delay was mainly session expiry. The shared extent runtime derives the
 session lifetime as five heartbeat intervals: about 60 seconds by default,
 10 seconds with a 2-second interval, and 5 seconds with a 1-second interval.
