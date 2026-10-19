@@ -94,7 +94,8 @@ committed or aborted outcome may be valid. Never blindly replay the transaction.
 
 ### Tuning interrupted handoff
 
-`tidbfs_heartbeat_ms` configures the existing extent runtime's renewal interval.
+`tidbfs_heartbeat_ms` is a global DuckDB-instance setting for the existing extent
+runtime's renewal interval. Use explicit `SET GLOBAL`; other scopes are rejected.
 The default remains 12,000 ms; the existing runtime derives session expiry as
 five heartbeat intervals. Set it **before the first extent access in a fresh
 DuckDB instance**. Changing it does not replace a live instance's session;
@@ -102,7 +103,7 @@ subsequent opens reject a mismatched setting instead of acquiring new ownership.
 
 ```sql
 LOAD 'build/tidbfs.duckdb_extension';
-SET tidbfs_heartbeat_ms = 1000; -- ~1 s heartbeats, ~5 s session lifetime
+SET GLOBAL tidbfs_heartbeat_ms = 1000; -- ~1 s heartbeats, ~5 s session lifetime
 -- CREATE SECRET fs (...) with your endpoint/token, then ATTACH ...
 ```
 

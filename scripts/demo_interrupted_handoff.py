@@ -93,7 +93,7 @@ def main():
     def worker(name, endpoint):
         child = Worker(args, endpoint, token, logs, name)
         workers.append(child)
-        child.execute(f'SET tidbfs_heartbeat_ms={args.heartbeat_ms}')
+        child.execute(f'SET GLOBAL tidbfs_heartbeat_ms={args.heartbeat_ms}')
         return child
 
     with tempfile.TemporaryDirectory(prefix='runtime-', dir=logs) as tmp:

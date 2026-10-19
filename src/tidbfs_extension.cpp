@@ -1192,7 +1192,15 @@ void LoadTiDBFS(ExtensionLoader &loader) {
 	    LogicalType::BIGINT, Value::BIGINT(65536));
 	DBConfig::GetConfig(loader.GetDatabaseInstance()).AddExtensionOption(
 	    "tidbfs_heartbeat_ms", "Extent session heartbeat in milliseconds; set before first extent access (expiry = 5x)",
-	    LogicalType::BIGINT, Value::BIGINT(12000));
+	    LogicalType::BIGINT, Value::BIGINT(12000),
+	    [](ClientContext &, SetScope scope, Value &value) {
+		    // Database/WAL opens also use an instance-level file opener. A
+		    // session-local value would disagree with that opener in one ATTACH.
+		    if (scope != SetScope::GLOBAL)
+			    throw InvalidInputException("tidbfs_heartbeat_ms is global; use SET GLOBAL");
+		    if (value.IsNull() || value.GetValue<int64_t>() < 1000 || value.GetValue<int64_t>() > 600000)
+			    throw InvalidInputException("tidbfs_heartbeat_ms must be between 1000 and 600000");
+	    }, SetScope::GLOBAL);
 	FileSystem::GetFileSystem(loader.GetDatabaseInstance()).RegisterSubSystem(make_uniq<TiDBFileSystem>());
 	FileSystem::GetFileSystem(loader.GetDatabaseInstance()).RegisterSubSystem(make_uniq<TiDBDatabaseFileSystem>());
 }

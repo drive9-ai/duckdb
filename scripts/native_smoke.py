@@ -225,7 +225,7 @@ class NativeDatabaseTests(unittest.TestCase):
 
     def test_heartbeat_is_fixed_for_live_extent_client(self):
         error = sql(self.attach + 'CREATE TABLE heartbeat_config AS SELECT 42 n; CHECKPOINT; '
-                    'SET tidbfs_heartbeat_ms=2000; '
+                    'SET GLOBAL tidbfs_heartbeat_ms=2000; '
                     f'ATTACH {quote(self.uri + ".other")} AS other;', fail=True)
         self.assertIn('fresh DuckDB instance', error)
         self.assertTrue(sql(self.readonly + 'SELECT n FROM heartbeat_config;').endswith('42'))

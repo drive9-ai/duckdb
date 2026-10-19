@@ -376,10 +376,12 @@ class ExtensionTest(unittest.TestCase):
     def test_heartbeat_configuration_bounds(self):
         out, _ = self.query("SELECT current_setting('tidbfs_heartbeat_ms');")
         self.assertEqual(out, '12000')
-        for ms in (-1, 0, 999, 600001):
+        _, error = self.query('SET SESSION tidbfs_heartbeat_ms=1000;', ok=False)
+        self.assertIn('tidbfs_heartbeat_ms is global', error)
+        for ms in (-1, 0, 999, 600001, 'NULL'):
             with self.subTest(heartbeat_ms=ms):
                 self.fixture.requests.clear()
-                _, error = self.query(f"SET tidbfs_heartbeat_ms={ms}; "
+                _, error = self.query(f"SET GLOBAL tidbfs_heartbeat_ms={ms}; "
                                       "SELECT * FROM read_csv('tidbfs:///data/items.csv');", ok=False)
                 self.assertIn('tidbfs_heartbeat_ms must be between 1000 and 600000', error)
                 self.assertEqual(self.fixture.requests, [])
