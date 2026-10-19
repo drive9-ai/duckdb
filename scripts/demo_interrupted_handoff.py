@@ -190,11 +190,13 @@ def main():
                     a.execute('SELECT count(*) FROM ledger')
                     checks += 1
                     time.sleep(1)
-                # A real acknowledged write after several TTLs, without changing
-                # expected data or truncating the already committed WAL.
+                # Two actual state changes in separate committed transactions:
+                # a same-value UPDATE alone may be optimized away by DuckDB.
+                a.execute("UPDATE ledger SET payload='heartbeat-write-probe' WHERE id=0")
                 a.execute("UPDATE ledger SET payload=md5(id::VARCHAR) WHERE id=0")
                 report['healthy_renewal'] = dict(seconds=time.monotonic() - healthy_started,
                                                 excluded_contenders=checks,
+                                                acknowledged_state_changes=2,
                                                 checksum=verify(a, args.rows + 1)['sha256'])
                 event('healthy_renewal_verified', **report['healthy_renewal'])
             headers, _ = get(endpoint + '/v1/fs' + uri_path + '.wal', 'HEAD', True)
