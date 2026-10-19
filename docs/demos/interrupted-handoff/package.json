@@ -1,0 +1,6 @@
+{
+  "name": "duckdb-interrupted-handoff-demo",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": { "@napi-rs/canvas": "0.1.100" }
+}

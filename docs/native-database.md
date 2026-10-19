@@ -133,6 +133,13 @@ analytical reads/writes of extent Parquet; and client/server restart recovery.
 Bridge tests exercise binary data, holes, truncate/regrow, rename replacement,
 unlink with open handles, cross-session locks and fail-closed deadlines.
 
+The separate [interrupted-handoff demo](demos/interrupted-handoff/README.md)
+cuts both metadata and object-storage connections for a running writer, lets
+another worker take over through natural session expiry/cleanup, restores the
+connections, and checks the old COMMIT fails while all committed rows survive.
+The public replay and raw results state the one-second test maintenance setting
+and distinguish client-side rejection from server-side delayed-write protection.
+
 Public GitHub CI builds a pinned public drive9 server and downloads a pinned,
 checksum-verified RustFS release, then runs bridge
 conformance, six native compatibility cases and four transient S3 fault cases.

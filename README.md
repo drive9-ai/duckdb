@@ -160,6 +160,10 @@ after each write before acknowledging it. This favors correctness over batching.
 See [setup, recovery behavior and live tests](docs/native-database.md).
 The live harness includes disposable RustFS tests for upload/download failures,
 lost responses, truncated reads, failed COMMIT and checkpoint crash recovery.
+The [interrupted-handoff demo](docs/demos/interrupted-handoff/README.md) disconnects
+a running writer from metadata and S3, waits for another worker to take over,
+then reconnects the old writer and verifies its COMMIT is rejected. It includes
+measured timing, full-row checksums, a GIF/MP4 and the reproducible fault harness.
 
 The value is twofold: analytical files let DuckDB's pruning reach remote byte
 ranges, while native mode lets a process leave SQL state that another process
