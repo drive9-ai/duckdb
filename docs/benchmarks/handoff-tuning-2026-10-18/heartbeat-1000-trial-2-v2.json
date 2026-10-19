@@ -1,0 +1,2463 @@
+{
+  "started_utc": "2026-10-19T03:36:00.206394+00:00",
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "machine": "arm64",
+  "duckdb_version": "v1.4.2 (Andium) 68d7555f68",
+  "plugin_source_commit": "4a1f685aa42e3123734dd1a639bf27bcaf915f59",
+  "fs_source_commit": "1a4967b61ac8ca6105945aa5d4955d3b5265495b",
+  "binary_sha256": {
+    "duckdb": "5bf6e20ca0c76f52e8f419bc167d3c6a91ecfe065187144687bdc24d3d1c6ef1",
+    "extension": "86631be1a68e5320b9c0ce8d842c3742148edfab048746e8c802b9046ce17ac7",
+    "fs_server": "b0b005496c180d416e44bd1b2b1f28a23de139e616632e1202e3565bc60bcb8c",
+    "tidb_server": "df445ea94d9563c8da6afdce2ecf886b9538167b4f04d3bc57cf955eb82dc6df",
+    "rustfs_server": "9e5bb7b9bc9b201ada61a7e65cf1faac85f3ecd0bc7026770e7834fdc4447a06"
+  },
+  "harness_sha256": "90191a876859ec9a10035f1f5046ae56d35d8714e72633de6c452ddec67c343f",
+  "proxy_sha256": "74f5f80a307715caa3ccfbe6cdc9568b9581ac2d8e5983a8ebca8f5bad5fa42d",
+  "backend": "Single-host loopback; TiDB unistore + RustFS S3",
+  "fault": "Socket shutdown and connection rejection on A metadata and S3 routes; B uses independent routes",
+  "maintenance_interval": "1s",
+  "poll_interval_seconds": 0.2,
+  "heartbeat_ms": 1000,
+  "session_ttl_seconds": 5.0,
+  "healthy_seconds": 0.0,
+  "initial_rows": 100000,
+  "events": [
+    {
+      "event": "a_ready",
+      "elapsed_seconds": 5.793454083,
+      "committed_rows": 100001,
+      "uncommitted_id": 100002,
+      "wal_bytes": 167
+    },
+    {
+      "event": "network_cut",
+      "elapsed_seconds": 5.793777916,
+      "writer_a_alive": true
+    },
+    {
+      "event": "route_blocked",
+      "elapsed_seconds": 5.794287291,
+      "lane": "metadata",
+      "error_type": "RemoteDisconnected"
+    },
+    {
+      "event": "route_blocked",
+      "elapsed_seconds": 5.795884416,
+      "lane": "objects",
+      "error_type": "ConnectionClosedError"
+    },
+    {
+      "event": "b_acquired",
+      "elapsed_seconds": 11.071803583,
+      "seconds_since_cut": 5.278028792,
+      "attempts": 21
+    },
+    {
+      "event": "wal_recovered",
+      "elapsed_seconds": 11.315867665999999,
+      "rows": 100001,
+      "sha256": "c9cefafcfd28fe3f120552a4f1e1da5fcf9408ac25b347c2a7f708a6e886fba9",
+      "expected_sha256": "c9cefafcfd28fe3f120552a4f1e1da5fcf9408ac25b347c2a7f708a6e886fba9",
+      "scan_seconds": 0.19558595800000056
+    },
+    {
+      "event": "b_committed",
+      "elapsed_seconds": 11.542013874999999,
+      "rows": 100002
+    },
+    {
+      "event": "network_restored",
+      "elapsed_seconds": 11.545262249999999,
+      "seconds_since_cut": 5.7486792079999995,
+      "both_routes_reachable": true
+    },
+    {
+      "event": "a_stale_commit_rejected",
+      "elapsed_seconds": 11.552362208,
+      "seconds": 0.00685087499999959,
+      "process_exit_code": 1,
+      "error": "extent session failed or expired; close and reopen, do not replay writes"
+    },
+    {
+      "event": "fresh_reader_verified",
+      "elapsed_seconds": 12.278664832999999,
+      "rows": 100002,
+      "sha256": "d86a3978b55958cc6671d0af8e56f0a210d8c5993afde7a6e88f7afdab6f5b80",
+      "expected_sha256": "d86a3978b55958cc6671d0af8e56f0a210d8c5993afde7a6e88f7afdab6f5b80",
+      "scan_seconds": 0.1945114169999993,
+      "forbidden_rows": 0
+    },
+    {
+      "event": "passed",
+      "elapsed_seconds": 12.279482208
+    }
+  ],
+  "attempts": [
+    {
+      "start_seconds": 0.0024268750000002726,
+      "end_seconds": 0.04507762500000023,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 0.24569937500000005,
+      "end_seconds": 0.30107404200000065,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 0.503080958,
+      "end_seconds": 0.55824725,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 0.7621064580000008,
+      "end_seconds": 0.8155578750000005,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 1.020894083,
+      "end_seconds": 1.0851409170000004,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 1.2884223330000006,
+      "end_seconds": 1.3426298330000002,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 1.5443827080000005,
+      "end_seconds": 1.5996571670000002,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 1.8054165000000006,
+      "end_seconds": 1.8642415420000003,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 2.0696080419999996,
+      "end_seconds": 2.1240415830000012,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 2.326116875000001,
+      "end_seconds": 2.379914417000001,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 2.583902042000001,
+      "end_seconds": 2.64138875,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 2.841728583000001,
+      "end_seconds": 2.925376292,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 3.130726125,
+      "end_seconds": 3.182754,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 3.3881647500000005,
+      "end_seconds": 3.4451132500000012,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 3.646947292000001,
+      "end_seconds": 3.7013546669999995,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 3.9026632080000008,
+      "end_seconds": 3.956281167000001,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 4.161678375,
+      "end_seconds": 4.224398333000001,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 4.429774333,
+      "end_seconds": 4.485118708000001,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 4.690522875,
+      "end_seconds": 4.742789542,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 4.946641917,
+      "end_seconds": 4.997666542,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 5.2031068330000005,
+      "end_seconds": 5.278028792,
+      "result": "acquired"
+    }
+  ],
+  "complete": true,
+  "before_partition": {
+    "rows": 100001,
+    "sha256": "c9cefafcfd28fe3f120552a4f1e1da5fcf9408ac25b347c2a7f708a6e886fba9",
+    "expected_sha256": "c9cefafcfd28fe3f120552a4f1e1da5fcf9408ac25b347c2a7f708a6e886fba9",
+    "scan_seconds": 0.16227416599999955
+  },
+  "wal_bytes_before_partition": 167,
+  "session_guard_advertised": true,
+  "takeover_seconds": 5.278028792,
+  "successful_attach_seconds": 0.0341324580000002,
+  "b_recovered": {
+    "rows": 100001,
+    "sha256": "c9cefafcfd28fe3f120552a4f1e1da5fcf9408ac25b347c2a7f708a6e886fba9",
+    "expected_sha256": "c9cefafcfd28fe3f120552a4f1e1da5fcf9408ac25b347c2a7f708a6e886fba9",
+    "scan_seconds": 0.19558595800000056
+  },
+  "b_before_reconnect": {
+    "rows": 100002,
+    "sha256": "d86a3978b55958cc6671d0af8e56f0a210d8c5993afde7a6e88f7afdab6f5b80",
+    "expected_sha256": "d86a3978b55958cc6671d0af8e56f0a210d8c5993afde7a6e88f7afdab6f5b80",
+    "scan_seconds": 0.1583557090000003
+  },
+  "stale_commit_error": "extent session failed or expired; close and reopen, do not replay writes",
+  "stale_commit_rejection_seconds": 0.00685087499999959,
+  "b_after_reconnect": {
+    "rows": 100002,
+    "sha256": "d86a3978b55958cc6671d0af8e56f0a210d8c5993afde7a6e88f7afdab6f5b80",
+    "expected_sha256": "d86a3978b55958cc6671d0af8e56f0a210d8c5993afde7a6e88f7afdab6f5b80",
+    "scan_seconds": 0.15917262500000007
+  },
+  "fresh_reader": {
+    "rows": 100002,
+    "sha256": "d86a3978b55958cc6671d0af8e56f0a210d8c5993afde7a6e88f7afdab6f5b80",
+    "expected_sha256": "d86a3978b55958cc6671d0af8e56f0a210d8c5993afde7a6e88f7afdab6f5b80",
+    "scan_seconds": 0.1945114169999993
+  },
+  "proxy_events": [
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "",
+      "status": 200,
+      "credential_endpoint_rewritten": true,
+      "seconds_since_cut": -2.9786253749999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "init",
+      "status": 200,
+      "seconds_since_cut": -2.9719346669999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -2.9711024169999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "incr_counter",
+      "status": 200,
+      "seconds_since_cut": -2.9702118329999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "new_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792380968,
+      "errno": 0,
+      "session_guard": true,
+      "seconds_since_cut": -2.9692408329999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -2.9672198329999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -2.9665817919999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -2.965968667
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -2.9654604169999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -2.964928583
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -2.9644907499999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -2.9640178329999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -2.9635533329999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -2.9630859169999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -2.9626501249999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -2.9622413749999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "incr_counter",
+      "status": 200,
+      "seconds_since_cut": -2.9613727499999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "mknod",
+      "status": 200,
+      "seconds_since_cut": -2.9592462079999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "open_ref",
+      "status": 200,
+      "seconds_since_cut": -2.9580743329999994
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "setlk",
+      "status": 200,
+      "seconds_since_cut": -2.9568384999999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "incr_counter",
+      "status": 200,
+      "seconds_since_cut": -2.955918958
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.9437109579999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.9415986669999996
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.9309565829999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.9276051249999995
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.9180271669999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.9149751669999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -2.9137937499999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -2.9129723329999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -2.912401083
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -2.9110994999999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -2.9097153749999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "mknod",
+      "status": 200,
+      "seconds_since_cut": -2.9080679999999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "open_ref",
+      "status": 200,
+      "seconds_since_cut": -2.9071190829999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "setlk",
+      "status": 200,
+      "seconds_since_cut": -2.905989042
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.8759105419999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.872305375
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.8089722079999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.804808208
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.7570044579999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.7532438329999995
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.7358154169999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.7323210829999995
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.7176168749999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.7136854169999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.7028727919999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.6994002499999996
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.6887730829999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.685565583
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.6746405419999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.6712279999999997
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.6597193749999994
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.656238625
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.6460148749999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.6427351249999997
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.6318085829999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.6277543329999995
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.6178613749999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.6145909579999995
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.603795
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.6005181669999997
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.5909585419999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.5877337079999996
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.5765248749999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.5732208749999996
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.5627906249999994
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.5593023329999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.5488275829999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.5455314999999996
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.5359241249999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.5327216669999997
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.5217413329999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.51805875
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.499825417
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.49634325
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.4580783329999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.4541837499999994
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.4436951249999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.4399948329999996
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.4286065829999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.4250585829999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.3867973749999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.3831069169999997
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.3435437919999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.3400604579999995
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.32967925
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.326257958
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.3148214169999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.3112490419999996
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.2919540419999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.2884724169999995
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.2738582919999994
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.270408833
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.2567519169999994
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.2533344579999994
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.2387772079999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.2349735829999995
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.2207325829999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.217205708
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.2015107499999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.19774325
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.1838387079999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.1805011669999996
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.165839625
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.1623983329999996
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.140733792
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.1369265829999997
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.108850375
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.1049253329999997
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.094934375
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.0915553749999996
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.0807315419999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.0772627919999995
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.0667113749999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.0632924169999995
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.052800583
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.0492482499999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.038878208
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.0355836669999996
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -2.0248321249999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -2.0215153329999995
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.9988832499999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.9954946249999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "refresh_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792380969,
+      "errno": 0,
+      "session_guard": null,
+      "seconds_since_cut": -1.9732194999999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -1.9693017079999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -1.9653121669999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -1.9575351249999997
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.9529001669999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.9511600829999995
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.9367326249999994
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.9332102499999992
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.9187977919999994
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.9152386669999997
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.9007214579999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.8971687079999997
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.8856554999999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.8819983329999994
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.8717666249999994
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.868546083
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.8567444169999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.853184958
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.8428895829999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.8396065419999994
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.8287474999999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.8253449999999996
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.8146432919999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.8111304169999993
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.7996552499999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.796180583
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.7857977919999994
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.7823962919999996
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.7717280419999994
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.7685049169999996
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.7588532919999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.755877292
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.7447659169999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.7414453329999997
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.7307844999999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.7275835419999996
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.7158209579999992
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.7124327079999997
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.7016210419999993
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.6984084169999996
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.6757312499999992
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.6721941249999999
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.6578537079999993
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.6543099999999997
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.6395987499999993
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.6357549999999996
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.6218109579999993
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.6184709169999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.6037082079999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.5992905419999994
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.5886791669999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.5841040829999997
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.5728199579999993
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.5688397079999996
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.5590077079999993
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.5556833329999993
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.544737167
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.5411086249999997
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.5308168749999993
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.5275824999999994
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.5158855419999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.5117773329999995
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.5018635829999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.4980322499999996
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.4859121669999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.4821880419999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.4718975829999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.4686740829999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.4578418329999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.454272875
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.4148660419999999
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.4109953749999997
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.3708337079999993
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.3666758329999995
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.3276108749999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.3229053749999995
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.28194025
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.278108875
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.2638705829999992
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.2604100419999993
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.2487343749999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.2453254169999992
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.23472225
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.2230059999999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.2118928749999993
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.2078520419999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.1978668749999999
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.1939536249999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.1828163329999999
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.179361375
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.1607949169999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.1575659579999993
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.142667458
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.139186875
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.1246912499999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.1212307919999995
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.098779125
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.0949799999999996
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.0787141249999994
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.0749985419999994
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.0639248749999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.0604249999999995
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.0499543749999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.0464816669999992
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.0358303329999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.0324931249999993
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.0217442499999994
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.0181096249999992
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -1.0067366669999993
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -1.0030597079999994
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.980680167
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.9768420829999993
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.9658324999999994
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.9622240829999997
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.9518594169999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.9483037080000001
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "refresh_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792380970,
+      "errno": 0,
+      "session_guard": null,
+      "seconds_since_cut": -0.925336208
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -0.9213576249999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -0.9173925
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -0.9133864579999997
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.9087641249999994
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.9067435420000001
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.8729053749999993
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.8688738749999994
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.8427729999999993
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.839116958
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.8078788329999993
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.8038094579999999
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.780893958
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.7768727499999999
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.7578737919999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.7542300419999997
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.7358845829999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.7321182079999993
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.7017314579999994
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.697635333
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.6808929579999994
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.677310125
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.6466744169999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.6424346249999999
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.6237271249999994
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.6199591669999993
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.600784
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.5973479999999993
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.5787069999999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.5749295829999994
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.5578386249999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.5545861249999993
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.5315844579999993
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.5279700419999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.4979455829999999
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.49438395799999935
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.47573825000000003
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.4717286249999999
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.4537066249999997
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.4501801670000001
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.43275799999999975
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.4291978329999999
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.38269299999999973
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.37791966699999957
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.35892608300000006
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.3564502919999999
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.31770316699999945
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.31512662499999955
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.2967146669999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.2929010829999994
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.2826194579999992
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.28042654199999983
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "setlk",
+      "status": 200,
+      "seconds_since_cut": -0.2788637499999993
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "delete_sustained",
+      "status": 200,
+      "seconds_since_cut": -0.2772455419999993
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -0.27655304199999975
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -0.2758896249999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -0.27528112499999935
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -0.27478879199999984
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -0.27421950000000006
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -0.2736620829999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "unlink",
+      "status": 200,
+      "seconds_since_cut": -0.24701149999999927
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -0.2429722079999994
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -0.2415252919999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -0.24095554200000002
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -0.24052641699999988
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -0.24007512499999972
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "mknod",
+      "status": 200,
+      "seconds_since_cut": -0.23853670799999982
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "open_ref",
+      "status": 200,
+      "seconds_since_cut": -0.2373579999999995
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "setlk",
+      "status": 200,
+      "seconds_since_cut": -0.23622537500000007
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.21775187499999937
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.2158957079999997
+    },
+    {
+      "kind": "network_cut",
+      "seconds_since_cut": 1.2542000000337339e-05
+    },
+    {
+      "kind": "connection_rejected",
+      "lane": "metadata",
+      "seconds_since_cut": 0.0004559170000000279
+    },
+    {
+      "kind": "connection_rejected",
+      "lane": "objects",
+      "seconds_since_cut": 0.0019461249999999097
+    },
+    {
+      "kind": "connection_rejected",
+      "lane": "metadata",
+      "seconds_since_cut": 0.037716167000000134
+    },
+    {
+      "kind": "network_restored",
+      "seconds_since_cut": 5.748678375
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": 5.749649875
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": 5.7511987079999995
+    }
+  ],
+  "completed_utc": "2026-10-19T03:36:12.485927+00:00"
+}

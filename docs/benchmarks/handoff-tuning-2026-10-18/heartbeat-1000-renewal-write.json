@@ -1,0 +1,3056 @@
+{
+  "started_utc": "2026-10-19T03:40:24.374903+00:00",
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "machine": "arm64",
+  "duckdb_version": "v1.4.2 (Andium) 68d7555f68",
+  "plugin_source_commit": "96f68076d3940c8038f3857f64ba844237ab4023",
+  "fs_source_commit": "1a4967b61ac8ca6105945aa5d4955d3b5265495b",
+  "binary_sha256": {
+    "duckdb": "5bf6e20ca0c76f52e8f419bc167d3c6a91ecfe065187144687bdc24d3d1c6ef1",
+    "extension": "86631be1a68e5320b9c0ce8d842c3742148edfab048746e8c802b9046ce17ac7",
+    "fs_server": "b0b005496c180d416e44bd1b2b1f28a23de139e616632e1202e3565bc60bcb8c",
+    "tidb_server": "df445ea94d9563c8da6afdce2ecf886b9538167b4f04d3bc57cf955eb82dc6df",
+    "rustfs_server": "9e5bb7b9bc9b201ada61a7e65cf1faac85f3ecd0bc7026770e7834fdc4447a06"
+  },
+  "harness_sha256": "89a45011ee8b29996bf9e22c022fc151345e7eedcd655b844d2c1a71c3148a5e",
+  "proxy_sha256": "74f5f80a307715caa3ccfbe6cdc9568b9581ac2d8e5983a8ebca8f5bad5fa42d",
+  "backend": "Single-host loopback; TiDB unistore + RustFS S3",
+  "fault": "Socket shutdown and connection rejection on A metadata and S3 routes; B uses independent routes",
+  "maintenance_interval": "1s",
+  "poll_interval_seconds": 0.2,
+  "heartbeat_ms": 1000,
+  "session_ttl_seconds": 5.0,
+  "healthy_seconds": 15.0,
+  "initial_rows": 100000,
+  "events": [
+    {
+      "event": "healthy_renewal_verified",
+      "elapsed_seconds": 22.534319916,
+      "seconds": 16.072621375,
+      "excluded_contenders": 15,
+      "acknowledged_state_changes": 2,
+      "checksum": "c9cefafcfd28fe3f120552a4f1e1da5fcf9408ac25b347c2a7f708a6e886fba9"
+    },
+    {
+      "event": "a_ready",
+      "elapsed_seconds": 22.538497833,
+      "committed_rows": 100001,
+      "uncommitted_id": 100002,
+      "wal_bytes": 482
+    },
+    {
+      "event": "network_cut",
+      "elapsed_seconds": 22.538735083000002,
+      "writer_a_alive": true
+    },
+    {
+      "event": "route_blocked",
+      "elapsed_seconds": 22.539169333,
+      "lane": "metadata",
+      "error_type": "RemoteDisconnected"
+    },
+    {
+      "event": "route_blocked",
+      "elapsed_seconds": 22.540755375000003,
+      "lane": "objects",
+      "error_type": "ConnectionClosedError"
+    },
+    {
+      "event": "b_acquired",
+      "elapsed_seconds": 27.821238666000003,
+      "seconds_since_cut": 5.282526000000001,
+      "attempts": 21
+    },
+    {
+      "event": "wal_recovered",
+      "elapsed_seconds": 28.067226666000003,
+      "rows": 100001,
+      "sha256": "c9cefafcfd28fe3f120552a4f1e1da5fcf9408ac25b347c2a7f708a6e886fba9",
+      "expected_sha256": "c9cefafcfd28fe3f120552a4f1e1da5fcf9408ac25b347c2a7f708a6e886fba9",
+      "scan_seconds": 0.1997383329999991
+    },
+    {
+      "event": "b_committed",
+      "elapsed_seconds": 28.302603666000003,
+      "rows": 100002
+    },
+    {
+      "event": "network_restored",
+      "elapsed_seconds": 28.305726166000003,
+      "seconds_since_cut": 5.764344125000001,
+      "both_routes_reachable": true
+    },
+    {
+      "event": "a_stale_commit_rejected",
+      "elapsed_seconds": 28.312758166000002,
+      "seconds": 0.006789915999998897,
+      "process_exit_code": 1,
+      "error": "extent session failed or expired; close and reopen, do not replay writes"
+    },
+    {
+      "event": "fresh_reader_verified",
+      "elapsed_seconds": 29.363386375,
+      "rows": 100002,
+      "sha256": "d86a3978b55958cc6671d0af8e56f0a210d8c5993afde7a6e88f7afdab6f5b80",
+      "expected_sha256": "d86a3978b55958cc6671d0af8e56f0a210d8c5993afde7a6e88f7afdab6f5b80",
+      "scan_seconds": 0.2034008329999999,
+      "forbidden_rows": 0
+    },
+    {
+      "event": "passed",
+      "elapsed_seconds": 29.364301
+    }
+  ],
+  "attempts": [
+    {
+      "start_seconds": 0.002356250000001836,
+      "end_seconds": 0.04147054099999892,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 0.24323004100000034,
+      "end_seconds": 0.2913642500000009,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 0.4933410830000007,
+      "end_seconds": 0.5469883750000015,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 0.7523000410000016,
+      "end_seconds": 0.8150680000000001,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 1.0204066249999997,
+      "end_seconds": 1.0823137910000007,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 1.286586332999999,
+      "end_seconds": 1.3411804160000003,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 1.5427656250000013,
+      "end_seconds": 1.601766541,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 1.8070636250000014,
+      "end_seconds": 1.853654958,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 2.0549466249999995,
+      "end_seconds": 2.1083597910000016,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 2.3136461250000018,
+      "end_seconds": 2.360448999999999,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 2.5660089160000012,
+      "end_seconds": 2.623662875000001,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 2.828169082999999,
+      "end_seconds": 2.897210000000001,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 3.1026621660000018,
+      "end_seconds": 3.1631487500000013,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 3.3670560000000016,
+      "end_seconds": 3.4300278330000005,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 3.6347418329999996,
+      "end_seconds": 3.6987312500000016,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 3.9041315830000016,
+      "end_seconds": 3.9626262079999997,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 4.168078541,
+      "end_seconds": 4.236191957999999,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 4.441797915999999,
+      "end_seconds": 4.511630749999998,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 4.717129,
+      "end_seconds": 4.760484957999999,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 4.965865041000001,
+      "end_seconds": 5.017597958,
+      "result": "locked"
+    },
+    {
+      "start_seconds": 5.2229762499999985,
+      "end_seconds": 5.282526000000001,
+      "result": "acquired"
+    }
+  ],
+  "complete": true,
+  "before_partition": {
+    "rows": 100001,
+    "sha256": "c9cefafcfd28fe3f120552a4f1e1da5fcf9408ac25b347c2a7f708a6e886fba9",
+    "expected_sha256": "c9cefafcfd28fe3f120552a4f1e1da5fcf9408ac25b347c2a7f708a6e886fba9",
+    "scan_seconds": 0.1656749589999995
+  },
+  "healthy_renewal": {
+    "seconds": 16.072621375,
+    "excluded_contenders": 15,
+    "acknowledged_state_changes": 2,
+    "checksum": "c9cefafcfd28fe3f120552a4f1e1da5fcf9408ac25b347c2a7f708a6e886fba9"
+  },
+  "wal_bytes_before_partition": 482,
+  "session_guard_advertised": true,
+  "takeover_seconds": 5.282526000000001,
+  "successful_attach_seconds": 0.037728750000002975,
+  "b_recovered": {
+    "rows": 100001,
+    "sha256": "c9cefafcfd28fe3f120552a4f1e1da5fcf9408ac25b347c2a7f708a6e886fba9",
+    "expected_sha256": "c9cefafcfd28fe3f120552a4f1e1da5fcf9408ac25b347c2a7f708a6e886fba9",
+    "scan_seconds": 0.1997383329999991
+  },
+  "b_before_reconnect": {
+    "rows": 100002,
+    "sha256": "d86a3978b55958cc6671d0af8e56f0a210d8c5993afde7a6e88f7afdab6f5b80",
+    "expected_sha256": "d86a3978b55958cc6671d0af8e56f0a210d8c5993afde7a6e88f7afdab6f5b80",
+    "scan_seconds": 0.16480024999999898
+  },
+  "stale_commit_error": "extent session failed or expired; close and reopen, do not replay writes",
+  "stale_commit_rejection_seconds": 0.006789915999998897,
+  "b_after_reconnect": {
+    "rows": 100002,
+    "sha256": "d86a3978b55958cc6671d0af8e56f0a210d8c5993afde7a6e88f7afdab6f5b80",
+    "expected_sha256": "d86a3978b55958cc6671d0af8e56f0a210d8c5993afde7a6e88f7afdab6f5b80",
+    "scan_seconds": 0.16236070899999788
+  },
+  "fresh_reader": {
+    "rows": 100002,
+    "sha256": "d86a3978b55958cc6671d0af8e56f0a210d8c5993afde7a6e88f7afdab6f5b80",
+    "expected_sha256": "d86a3978b55958cc6671d0af8e56f0a210d8c5993afde7a6e88f7afdab6f5b80",
+    "scan_seconds": 0.2034008329999999
+  },
+  "proxy_events": [
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "",
+      "status": 200,
+      "credential_endpoint_rewritten": true,
+      "seconds_since_cut": -19.328257417
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "init",
+      "status": 200,
+      "seconds_since_cut": -19.318827167
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -19.317843292
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "incr_counter",
+      "status": 200,
+      "seconds_since_cut": -19.316827834
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "new_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792381232,
+      "errno": 0,
+      "session_guard": true,
+      "seconds_since_cut": -19.315873625000002
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -19.314388292
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -19.313728042
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -19.313146542
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -19.312659834
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -19.311963542
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -19.311387542
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -19.310759125
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -19.31012275
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -19.309492834
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -19.308999833999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -19.308553875
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "incr_counter",
+      "status": 200,
+      "seconds_since_cut": -19.307668125
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "mknod",
+      "status": 200,
+      "seconds_since_cut": -19.305565084
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "open_ref",
+      "status": 200,
+      "seconds_since_cut": -19.303760709
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "setlk",
+      "status": 200,
+      "seconds_since_cut": -19.299827167
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "incr_counter",
+      "status": 200,
+      "seconds_since_cut": -19.298595209
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -19.2847575
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -19.28248725
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -19.272320917000002
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -19.268849334
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -19.259166417
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -19.255790584
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -19.254340584
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -19.253772209
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -19.253122167
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -19.251509375
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -19.250027042
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "mknod",
+      "status": 200,
+      "seconds_since_cut": -19.24792025
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "open_ref",
+      "status": 200,
+      "seconds_since_cut": -19.246911834
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "setlk",
+      "status": 200,
+      "seconds_since_cut": -19.245460959
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -19.214143917
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -19.210624125
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -19.147954667
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -19.144155625
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -19.107229916999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -19.099603834
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -19.080963292
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -19.076779667
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -19.066165792
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -19.062701834
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -19.052153542
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -19.047563667
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -19.007235709
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -19.003729749999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.965331584
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.961470084
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.920954167
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.916927
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.902136209
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.898504334000002
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.887064209000002
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.883321375
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.873116666999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.869794792
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.859119167
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.8557915
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.845139084
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.841929917
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.831169834
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.8278385
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.818293375
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.814540459
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.802103959
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.798614084
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.788211834
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.784495292
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.753203625
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.749638875
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.735125584
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.731558209
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.719264792
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.716050459
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.706157875
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.702675042
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.691085584
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.687768124999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.67710025
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.673801334
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.663339792
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.660208917
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.65006975
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.645983917
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.635086167
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.631360542
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.621079792
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.617910625
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.591235334
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.587581375
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.576173709
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.572934334
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.541209584
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.537185375
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.519193334
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.515613334
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.504071292
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.500494417
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.4903155
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.486932584
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.472104875
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.468794709
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.434149125
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.430101834
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.419092499999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.41575425
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.392999125
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.389200291999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.377092917
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.374101417
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.364133917
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.360459625
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.34904275
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.345630042
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.333980334
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.330622083999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.319071584
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.315497792
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.30538875
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.301586792000002
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.289173667
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "refresh_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792381233,
+      "errno": 0,
+      "session_guard": null,
+      "seconds_since_cut": -18.288157917
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.287177667
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -18.286867542
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -18.28621025
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -18.285714417
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.277378209
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.274172042
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.263123417
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.259533459
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.248176084
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.244460791999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.233287959000002
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.229464167
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.219111625
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.215528042
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.203358084
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.19979825
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.189210959
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.1852715
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.174094625
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.17037725
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.159166292000002
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.155726959
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.144168999999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.140186584
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.130103542
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.126001042
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.115184624999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.111643792
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.101146209
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.097655334
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.0859385
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.082360917
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.072222084
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.068997834
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.058193667
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.053602584
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -18.0129115
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -18.0089675
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.967949917
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.9641265
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.926232084
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.9215195
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.880022792
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.875532624999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.86528625
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.861478042
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.850261917
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.846971584000002
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.837237125
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.83353175
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.822118666999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.818361666999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.808105959
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.804634833999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.794000334
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.789938792
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.77928475
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.776029334
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.765237292000002
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.761731
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.735219209
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.730725542000002
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.714234209
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.710435042
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.696217542
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.69249525
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.669287042
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.665471334
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.651064334
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.646925
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.636065334
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.632319584
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.6220975
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.618575959
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.608272959
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.604687667
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.593997084
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.590221875
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.579121042
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.575302209
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.565115
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.561696084
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.550150584
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.54683475
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.535132792
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.531466584
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.520078292
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.516480542
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.505222459
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.50167825
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.490033334
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.486249667
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.476116959
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.472043709
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.460140917
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.455753834
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.445166125
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.430956584
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.414173167
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.409711041999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.390957459
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.38694925
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.359180000000002
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.355725583999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.34114725
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.337663
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.303190999999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.299105875
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.28505225
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.281386209
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.266218209
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "refresh_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792381234,
+      "errno": 0,
+      "session_guard": null,
+      "seconds_since_cut": -17.263104834
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.2621685
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -17.261888499999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -17.261231375
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -17.260734459
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.243995124999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.239906625
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.200792125
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.196359292
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.178194667
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.174570209
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.157146542
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.153385042
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.134041417
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.129773042
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.111108041999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.107160667
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.088285458999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.08440025
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.039058375
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.034777083999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -17.010702917
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -17.006750084
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -16.986865334
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -16.982921
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -16.943229209000002
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -16.938235709
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -16.919054334000002
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -16.913438209
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -16.894103834
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -16.889970917
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -16.871191792
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -16.867531459
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -16.849284542
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -16.845715917
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -16.815163625
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -16.811487624999998
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -16.792160084
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -16.78806
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -16.753229417
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -16.749812917
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -16.715184792
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -16.710997209
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -16.67640025
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -16.6722365
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -16.652977334
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -16.648755375
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -16.62994125
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -16.627757667
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -16.612178
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -16.610144459
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -16.578937917
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -16.57458875
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -16.564104334
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -16.562288625
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "setlk",
+      "status": 200,
+      "seconds_since_cut": -16.560877459
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "delete_sustained",
+      "status": 200,
+      "seconds_since_cut": -16.55948525
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -16.558887084
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -16.558312334
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -16.557640834
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -16.557122667
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -16.55654825
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -16.555934542
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "unlink",
+      "status": 200,
+      "seconds_since_cut": -16.5281365
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -16.525102459
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -16.523643792
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -16.522191624999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "getattr",
+      "status": 200,
+      "seconds_since_cut": -16.521637417
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "lookup",
+      "status": 200,
+      "seconds_since_cut": -16.521151542
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "mknod",
+      "status": 200,
+      "seconds_since_cut": -16.519367292
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "open_ref",
+      "status": 200,
+      "seconds_since_cut": -16.518276833999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "setlk",
+      "status": 200,
+      "seconds_since_cut": -16.51715475
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -16.507244292
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -16.505637584
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "refresh_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792381235,
+      "errno": 0,
+      "session_guard": null,
+      "seconds_since_cut": -16.266685875
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -16.265763792
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -16.265216334
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -16.264646584
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "refresh_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792381236,
+      "errno": 0,
+      "session_guard": null,
+      "seconds_since_cut": -15.252114459
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -15.24462025
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -15.241570584
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -15.240571542
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "refresh_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792381237,
+      "errno": 0,
+      "session_guard": null,
+      "seconds_since_cut": -14.204156167
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -14.202406834
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -14.201510375
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -14.200762083999999
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "refresh_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792381238,
+      "errno": 0,
+      "session_guard": null,
+      "seconds_since_cut": -13.167152917
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -13.162553584
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -13.158630625
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -13.157648959
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "refresh_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792381239,
+      "errno": 0,
+      "session_guard": null,
+      "seconds_since_cut": -12.154293041999999
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -12.152094
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -12.151056875
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -12.150178292
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "refresh_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792381240,
+      "errno": 0,
+      "session_guard": null,
+      "seconds_since_cut": -11.186625292
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -11.184380334
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -11.183086834
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -11.181993792
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "refresh_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792381241,
+      "errno": 0,
+      "session_guard": null,
+      "seconds_since_cut": -10.187460125
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -10.185307167
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -10.18421275
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -10.183334917
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "refresh_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792381242,
+      "errno": 0,
+      "session_guard": null,
+      "seconds_since_cut": -9.211223541999999
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -9.209596542
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -9.208797167
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -9.207997042
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "refresh_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792381243,
+      "errno": 0,
+      "session_guard": null,
+      "seconds_since_cut": -8.220789542
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -8.219423042
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -8.218630917
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -8.218031333999999
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "refresh_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792381244,
+      "errno": 0,
+      "session_guard": null,
+      "seconds_since_cut": -7.23035475
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -7.225967666999999
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -7.223995499999999
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -7.222749584000001
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "refresh_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792381245,
+      "errno": 0,
+      "session_guard": null,
+      "seconds_since_cut": -6.183527292000001
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -6.1815722499999985
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -6.1804620419999985
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -6.179527042
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "refresh_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792381246,
+      "errno": 0,
+      "session_guard": null,
+      "seconds_since_cut": -5.212031166999999
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -5.210271459000001
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -5.2093219170000005
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -5.208448666999999
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "refresh_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792381247,
+      "errno": 0,
+      "session_guard": null,
+      "seconds_since_cut": -4.242876584000001
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -4.240380999999999
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -4.238837374999999
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -4.237557249999998
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "refresh_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792381248,
+      "errno": 0,
+      "session_guard": null,
+      "seconds_since_cut": -3.2025830000000006
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -3.200744458999999
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -3.1996554999999987
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -3.198801750000001
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "refresh_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792381249,
+      "errno": 0,
+      "session_guard": null,
+      "seconds_since_cut": -2.1845554999999983
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -2.1824264589999984
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -2.181381375000001
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -2.1804340840000016
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "refresh_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792381250,
+      "errno": 0,
+      "session_guard": null,
+      "seconds_since_cut": -1.1311166250000007
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -1.1297070839999996
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -1.1289037919999991
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -1.1282685000000008
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "read",
+      "status": 200,
+      "seconds_since_cut": -0.2742879589999987
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.2517001249999993
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.24626245900000043
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": -0.2244979590000007
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "write",
+      "status": 200,
+      "seconds_since_cut": -0.21986429200000046
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "refresh_session",
+      "status": 200,
+      "sid": 1,
+      "expire": 1792381251,
+      "errno": 0,
+      "session_guard": null,
+      "seconds_since_cut": -0.034563999999999595
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "load",
+      "status": 200,
+      "seconds_since_cut": -0.005990374999999659
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -0.0036957089999987147
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "get_counter",
+      "status": 200,
+      "seconds_since_cut": -0.0026533340000014505
+    },
+    {
+      "kind": "network_cut",
+      "seconds_since_cut": 3.508300000021336e-05
+    },
+    {
+      "kind": "connection_rejected",
+      "lane": "metadata",
+      "seconds_since_cut": 0.0004304580000003
+    },
+    {
+      "kind": "connection_rejected",
+      "lane": "objects",
+      "seconds_since_cut": 0.0019116660000015884
+    },
+    {
+      "kind": "connection_rejected",
+      "lane": "metadata",
+      "seconds_since_cut": 1.0344435830000016
+    },
+    {
+      "kind": "network_restored",
+      "seconds_since_cut": 5.764343499999999
+    },
+    {
+      "kind": "response",
+      "lane": "metadata",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": 5.765255583000002
+    },
+    {
+      "kind": "response",
+      "lane": "objects",
+      "op": "",
+      "status": 200,
+      "seconds_since_cut": 5.766756999999998
+    }
+  ],
+  "completed_utc": "2026-10-19T03:40:53.739340+00:00"
+}

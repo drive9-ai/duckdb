@@ -133,6 +133,7 @@ depends on cleanup, retry timing and WAL recovery; a 5 s session is not a fixed
 The same fault harness accepts `--heartbeat-ms 1000 --poll-interval 0.2`.
 `--healthy-seconds 15` additionally verifies sustained renewal, writer exclusion,
 and an acknowledged write before cutting the connections.
+See the [measured 1 s / 2 s / default comparison and raw results](benchmarks/handoff-tuning-2026-10-18.md).
 
 Temporary files follow ordinary extent lifecycle. DuckDB removes its spill
 directory on normal cleanup; a crashed process can leave named temporary files.

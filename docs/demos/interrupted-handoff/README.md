@@ -1,5 +1,9 @@
 # Interrupted DuckDB handoff: disconnect, takeover, reconnect
 
+**Follow-up:** [heartbeat tuning reduced takeover to 4.75 s median](../../benchmarks/handoff-tuning-2026-10-18.md)
+in three local runs. This page and its GIF preserve the original default-heartbeat
+measurement below.
+
 **Measured on October 18, 2026 (PDT):** writer B took over **57.845 seconds**
 after writer A lost connectivity. A stayed alive throughout the outage. After
 both of A's network routes were restored, its attempted INSERT + COMMIT failed
