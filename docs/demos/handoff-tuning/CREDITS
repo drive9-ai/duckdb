@@ -1,0 +1,8 @@
+Original diagram, animation and test evidence: this repository, MIT.
+Inter: Rasmus Andersson, https://github.com/rsms/inter, SIL Open Font License 1.1.
+JetBrains Mono: JetBrains, https://github.com/JetBrains/JetBrainsMono, SIL Open Font License 1.1.
+Fonts and OFL license texts are reused from ../interrupted-handoff/fonts/.
+Renderer: @napi-rs/canvas 0.1.100, MIT; ffmpeg is an external build dependency.
+Style grammar: Siddon Visual Engineering v2, with lemo-opuscar reference
+revision 508848acb2b4930c4041fef4d594120da1525bff. No reference demo code or assets copied.
+Audio: intentionally silent. No stock images, music, footage or external data.

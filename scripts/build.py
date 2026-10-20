@@ -10,6 +10,7 @@ import shlex
 import shutil
 import subprocess
 import urllib.request
+from build_extent import build as build_extent
 
 ROOT = Path(__file__).resolve().parents[1]
 JSON_SHA256 = "9bea4c8066ef4a1c206b2be5a36302f8926f7fdc6087af5d20b417d0cf103ea6"
@@ -36,6 +37,7 @@ def build_linux(args, version, target, build):
                     "--parallel", os.environ.get("BUILD_JOBS", "2")], check=True)
     output = build / "tidbfs.duckdb_extension"
     shutil.copyfile(cmake_build / "extension/tidbfs/tidbfs.duckdb_extension", output)
+    shutil.copyfile(cmake_build / "extension/tidbfs/libtidbfs_extent.so", build / "libtidbfs_extent.so")
     verify(args.duckdb, output, version, target)
 
 
@@ -77,16 +79,18 @@ def main():
     if hashlib.sha256(header.read_bytes()).hexdigest() != JSON_SHA256:
         raise RuntimeError("JSON dependency checksum mismatch")
     output = build / "tidbfs.duckdb_extension"
+    archive = build / "libtidbfs_extent.a"
+    build_extent(archive)
     command = [os.environ.get("CXX", "c++"), "-std=c++17", "-O2", "-DNDEBUG", "-fPIC", "-Wall", "-Wextra",
                "-Wno-unused-parameter", "-Wno-deprecated-declarations", "-I" + str(includes), "-I" + str(deps)]
     command += ["-dynamiclib", "-undefined", "dynamic_lookup"]
     command += shlex.split(os.environ.get("CXXFLAGS", ""))
     command += [str(ROOT / "src/tidbfs_extension.cpp"), "-o", str(output)]
-    command += ["-lcurl"]
+    command += [str(archive), "-lcurl", "-pthread", "-lresolv", "-framework", "CoreFoundation", "-framework", "Security"]
     subprocess.run(command, check=True)
     # DuckDB v1.4.x scripts/append_metadata.cmake: 8 reversed 32-byte fields,
     # then 256 bytes reserved for a signature. The local build is unsigned.
-    fields = ["4", target, version, "0.1.0", "CPP", "", "", ""]
+    fields = ["4", target, version, "0.3.0", "CPP", "", "", ""]
     if any(len(field.encode()) > 32 for field in fields):
         raise RuntimeError("DuckDB metadata field exceeds 32 bytes")
     with output.open("ab") as handle:

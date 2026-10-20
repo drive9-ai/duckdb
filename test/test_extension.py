@@ -1,6 +1,8 @@
 """Exercise the compiled extension through the real DuckDB CLI, over HTTP."""
 
 import json
+import base64
+from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
 import re
@@ -28,6 +30,14 @@ class Fixture:
         self.fault = None
         self.object_expired = False
         self.object_reads = 0
+        self.revisions = {}
+        self.directories = {"/"}
+        self.uploads = {}
+        self.inline_threshold = 1024 * 1024
+        self.max_upload_bytes = 128 * 1024 * 1024
+        self.upload_expired = False
+        self.mutation_lock = threading.RLock()
+        self.commit_barrier = None
         fixture = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -48,6 +58,112 @@ class Fixture:
             def do_GET(self):
                 self.serve(False)
 
+            def do_POST(self):
+                self.mutate()
+
+            def do_PUT(self):
+                self.mutate()
+
+            def do_DELETE(self):
+                self.mutate()
+
+            def mutate(self):
+                length = int(self.headers.get("Content-Length", "0"))
+                body = self.rfile.read(length)
+                target = urlsplit(self.path)
+                path = unquote(target.path)
+                object_write = path.startswith("/upload-parts/")
+                fixture.requests.append({"method": self.command, "path": path, "object": object_write,
+                                         "authorization": self.headers.get("Authorization"),
+                                         "if_match": self.headers.get("If-Match"), "range": None, "list": False})
+                if object_write and self.headers.get("Authorization"):
+                    return self.reply(403)
+                if not object_write and self.headers.get("Authorization") != "Bearer fixture-token":
+                    return self.reply(403)
+                if fixture.commit_barrier and self.command == "PUT" and path == "/v1/fs/output/race.csv":
+                    fixture.commit_barrier.wait(timeout=15)
+                with fixture.mutation_lock:
+                    if object_write:
+                        _, _, upload_id, number = path.split("/")
+                        if fixture.fault == "upload_fail":
+                            return self.reply(500)
+                        if fixture.fault == "upload_expire" and not fixture.upload_expired:
+                            fixture.upload_expired = True
+                            return self.reply(403)
+                        fixture.uploads[upload_id]["parts"][int(number)] = body
+                        return self.reply(200, {"ETag": f'"part-{number}"'})
+                    if path.startswith("/v2/uploads/"):
+                        data = json.loads(body)
+                        if path == "/v2/uploads/initiate":
+                            upload_id = str(len(fixture.uploads) + 1)
+                            fixture.uploads[upload_id] = dict(data, parts={})
+                            return self.reply(202, body=json.dumps({"upload_id": upload_id,
+                                              "part_size": 1024 * 1024, "checksum_contract": {"required": False}}).encode())
+                        _, _, _, upload_id, action = path.split("/")
+                        upload = fixture.uploads[upload_id]
+                        if action == "presign":
+                            number = data["part_number"]
+                            part_size = min(1024 * 1024, upload["total_size"] - (number - 1) * 1024 * 1024)
+                            url = fixture.endpoint + f"/upload-parts/{upload_id}/{number}"
+                            if fixture.fault == "upload_unsafe":
+                                url = "http://example.invalid/upload?secret=never-expose"
+                            return self.reply(200, body=json.dumps({"number": number, "size": part_size, "url": url,
+                                              "headers": {"Authorization": "Bearer must-not-forward", "If-Match": "must-not-forward"}}).encode())
+                        if action == "abort":
+                            upload["aborted"] = True
+                            return self.reply(200)
+                        if action == "complete":
+                            expected = upload["expected_revision"]
+                            current = fixture.revisions.get(upload["path"], 1 if upload["path"] in fixture.files else 0)
+                            if fixture.fault == "write_conflict" or current != expected:
+                                return self.reply(409)
+                            contents = b"".join(upload["parts"][part["number"]] for part in data["parts"])
+                            if len(contents) != upload["total_size"]:
+                                return self.reply(400)
+                            fixture.files[upload["path"]] = contents
+                            fixture.revisions[upload["path"]] = current + 1
+                            upload["complete"] = True
+                            return self.reply(200, body=b'{"status":"completed"}')
+                        return self.reply(400)
+                    path = path[len("/v1/fs"):]
+                    if self.command == "PUT":
+                        expected = int(self.headers.get("X-Dat9-Expected-Revision", "-1"))
+                        current = fixture.revisions.get(path, 1 if path in fixture.files else 0)
+                        if fixture.fault == "write_conflict" or expected != current:
+                            return self.reply(409)
+                        if fixture.fault == "write_fail" or (fixture.fault == "schema_fail" and path.endswith("/schema.sql")):
+                            return self.reply(500)
+                        if length and length >= fixture.inline_threshold:
+                            return self.reply(400)
+                        fixture.files[path] = body
+                        fixture.revisions[path] = current + 1
+                        return self.reply(200, body=json.dumps({"revision": current + 1}).encode())
+                    if self.command == "DELETE":
+                        if target.query == "recursive":
+                            for name in list(fixture.files):
+                                if name.startswith(path):
+                                    del fixture.files[name]
+                            fixture.directories = {name for name in fixture.directories if not name.startswith(path)}
+                            return self.reply(200)
+                        if path not in fixture.files:
+                            return self.reply(404)
+                        del fixture.files[path]
+                        fixture.revisions.pop(path, None)
+                        return self.reply(200)
+                    if target.query == "mkdir":
+                        fixture.directories.add(path)
+                        return self.reply(200)
+                    if target.query == "rename":
+                        source = self.headers["X-Dat9-Rename-Source"]
+                        if self.headers.get("X-Dat9-Path-Encoding") == "base64url":
+                            source = base64.urlsafe_b64decode(source + "=" * (-len(source) % 4)).decode()
+                        if source not in fixture.files:
+                            return self.reply(404)
+                        fixture.files[path] = fixture.files.pop(source)
+                        fixture.revisions[path] = fixture.revisions.pop(source, 1)
+                        return self.reply(200)
+                    return self.reply(400)
+
             def reply(self, status, headers=None, body=b"", head=False):
                 self.send_response(status)
                 for key, value in (headers or {}).items():
@@ -63,6 +179,9 @@ class Fixture:
 
             def serve(self, head):
                 target = urlsplit(self.path)
+                if target.path == "/v1/status":
+                    return self.reply(200, body=json.dumps({"inline_threshold": fixture.inline_threshold,
+                                      "max_upload_bytes": fixture.max_upload_bytes}).encode())
                 object_read = target.path.startswith("/objects/")
                 path = unquote(target.path[len("/objects") if object_read else len("/v1/fs"):])
                 fixture.requests.append({"method": self.command, "path": path, "object": object_read,
@@ -81,13 +200,22 @@ class Fixture:
                             if child:
                                 entries[child] = {"name": child, "size": len(body),
                                                   "isDir": "/" in name[len(path):]}
+                    for name in fixture.directories:
+                        if name.startswith(path):
+                            child = name[len(path):].split("/")[0]
+                            if child:
+                                entries[child] = {"name": child, "isDir": True}
                     return self.reply(200, body=json.dumps({"entries": list(entries.values())}).encode())
+                directory = path.rstrip("/") + "/"
+                if head and (directory in fixture.directories or any(name.startswith(directory) for name in fixture.files)):
+                    return self.reply(200, {"X-Dat9-IsDir": "true", "Content-Length": 0}, head=True)
                 if path not in fixture.files:
                     return self.reply(404)
                 body = fixture.files[path]
-                etag = '"object-v1"' if object_read else '"inode-v1"'
+                revision = fixture.revisions.get(path, 1)
+                etag = '"object-v1"' if object_read else f'"inode-v{revision}"'
                 headers = {"ETag": etag, "Accept-Ranges": "bytes", "X-Dat9-IsDir": "false",
-                           "X-Dat9-Content-Layout": "single", "X-Dat9-Mtime": "1700000000"}
+                           "X-Dat9-Content-Layout": "single", "X-Dat9-Mtime": "1700000000", "X-Dat9-Revision": revision}
                 if head:
                     headers["Content-Length"] = len(body)
                     if fixture.fault == "legacy":
@@ -235,14 +363,151 @@ class ExtensionTest(unittest.TestCase):
         out, _ = self.query("SELECT sum(id) FROM read_json('tidbfs:///data/items.json');")
         self.assertEqual(out, "3")
 
-    def test_read_only_and_invalid_paths(self):
-        _, error = self.query("COPY (SELECT 1) TO 'tidbfs:///data/out.parquet' (FORMAT PARQUET);", ok=False)
-        self.assertIn("read-only", error)
+    def test_database_locks_and_invalid_paths(self):
+        _, error = self.query("ATTACH 'tidbfs:///data/live.duckdb' AS remote;", ok=False)
+        self.assertIn("database file locks", error)
+        self.assertNotIn("/data/live.duckdb", self.fixture.files)
         for path in ("tidbfs://host/file.parquet", "tidbfs:///data/../file.parquet"):
             with self.subTest(path=path):
                 self.fixture.requests.clear()
                 self.query(f"SELECT * FROM read_parquet({sql_string(path)});", ok=False)
                 self.assertEqual(self.fixture.requests, [])
+
+    def test_heartbeat_configuration_bounds(self):
+        out, _ = self.query("SELECT current_setting('tidbfs_heartbeat_ms');")
+        self.assertEqual(out, '12000')
+        _, error = self.query('SET SESSION tidbfs_heartbeat_ms=1000;', ok=False)
+        self.assertIn('tidbfs_heartbeat_ms is global', error)
+        for ms in (-1, 0, 999, 600001, 'NULL'):
+            with self.subTest(heartbeat_ms=ms):
+                self.fixture.requests.clear()
+                _, error = self.query(f"SET GLOBAL tidbfs_heartbeat_ms={ms}; "
+                                      "SELECT * FROM read_csv('tidbfs:///data/items.csv');", ok=False)
+                self.assertIn('tidbfs_heartbeat_ms must be between 1000 and 600000', error)
+                self.assertEqual(self.fixture.requests, [])
+
+    def test_copy_formats_and_overwrite(self):
+        for format in ("PARQUET", "CSV", "JSON"):
+            with self.subTest(format=format):
+                suffix = format.lower()
+                path = f"tidbfs:///output/中文 % #.{suffix}"
+                self.query(f"COPY (SELECT i AS id FROM range(50) t(i)) TO {sql_string(path)} (FORMAT {format});")
+                out, _ = self.query(f"SELECT sum(id) FROM read_{suffix}({sql_string(path)});")
+                self.assertEqual(out, "1225")
+                self.query(f"COPY (SELECT 99 AS id) TO {sql_string(path)} (FORMAT {format});")
+                out, _ = self.query(f"SELECT sum(id) FROM read_{suffix}({sql_string(path)});")
+                self.assertEqual(out, "99")
+
+    def test_partition_output_append_and_overwrite(self):
+        sql = "COPY (SELECT i AS id, i % 3 AS bucket FROM range(30) t(i)) TO 'tidbfs:///out' (FORMAT PARQUET, PARTITION_BY(bucket)"
+        self.query(sql + ");")
+        out, _ = self.query("SELECT sum(id) FROM read_parquet('tidbfs:///out/**/*.parquet', hive_partitioning=true);")
+        self.assertEqual(out, "435")
+        self.query(sql + ");", ok=False)
+        self.query(sql + ", APPEND);")
+        out, _ = self.query("SELECT count(*) FROM read_parquet('tidbfs:///out/**/*.parquet');")
+        self.assertEqual(out, "60")
+        self.query(sql + ", OVERWRITE);")
+        out, _ = self.query("SELECT count(*) FROM read_parquet('tidbfs:///out/**/*.parquet');")
+        self.assertEqual(out, "30")
+
+    def test_export_import_database(self):
+        self.query("CREATE TABLE items AS SELECT i AS id, 'row-' || i AS label FROM range(100) t(i); "
+                   "CREATE VIEW counts AS SELECT count(*) AS n FROM items; "
+                   "EXPORT DATABASE 'tidbfs:///backup' (FORMAT PARQUET);")
+        self.assertIn("/backup/schema.sql", list(self.fixture.files))
+        self.assertIn("/backup/load.sql", list(self.fixture.files))
+        out, _ = self.query("IMPORT DATABASE 'tidbfs:///backup'; SELECT n FROM counts; SELECT sum(id) FROM items;")
+        self.assertEqual(out, "100\n4950")
+
+    def test_export_reports_deferred_publication_failure(self):
+        self.fixture.fault = "schema_fail"
+        _, error = self.query("CREATE TABLE items AS SELECT 1 AS id; EXPORT DATABASE 'tidbfs:///failed-backup';", ok=False)
+        self.assertIn("HTTP 500", error)
+        self.assertNotIn("/failed-backup/schema.sql", list(self.fixture.files))
+
+    def test_concurrent_publication_conflict(self):
+        self.fixture.commit_barrier = threading.Barrier(2)
+        def writer(value):
+            # Return raw results because exactly one of the competing writers must fail.
+            script = (f"LOAD {sql_string(EXTENSION)}; CREATE SECRET fs (TYPE tidbfs, "
+                      f"ENDPOINT {sql_string(self.fixture.endpoint)}, TOKEN 'fixture-token'); "
+                      f"COPY (SELECT {value} AS id) TO 'tidbfs:///output/race.csv' (FORMAT CSV);")
+            return subprocess.run([DUCKDB, "-unsigned", "-csv", "-noheader", "-bail"],
+                                  input=script, text=True, capture_output=True, timeout=30)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(writer, (1, 2)))
+        self.assertEqual(sum(r.returncode == 0 for r in results), 1)
+        self.assertTrue(any("write conflict" in r.stderr for r in results))
+        self.assertIn(self.fixture.files["/output/race.csv"], (b"id\n1\n", b"id\n2\n"))
+
+    def test_multipart_copy_and_credential_boundary(self):
+        self.query("COPY (SELECT * FROM read_parquet('tidbfs:///data/orders.parquet')) "
+                   "TO 'tidbfs:///output/large.parquet' (FORMAT PARQUET);")
+        self.assertTrue(any(upload.get("complete") for upload in self.fixture.uploads.values()))
+        objects = [r for r in self.fixture.requests if r["object"] and r["method"] == "PUT"]
+        self.assertGreater(len(objects), 1)
+        self.assertTrue(all(r["authorization"] is None and r["if_match"] is None for r in objects))
+        out, _ = self.query("SELECT sum(length(payload)) FROM read_parquet('tidbfs:///output/large.parquet');")
+        self.assertEqual(out, "9600000")
+
+    def test_failed_publication_preserves_destination(self):
+        for fault in ("write_fail", "write_conflict"):
+            with self.subTest(fault=fault):
+                self.fixture.fault = fault
+                original = self.fixture.files["/data/items.csv"]
+                self.query("COPY (SELECT 99 AS id) TO 'tidbfs:///data/items.csv' (FORMAT CSV);", ok=False)
+                self.assertEqual(self.fixture.files["/data/items.csv"], original)
+
+    def test_failed_multipart_is_aborted(self):
+        for fault in ("upload_fail", "write_conflict", "upload_unsafe"):
+            with self.subTest(fault=fault):
+                self.fixture.fault = fault
+                self.fixture.uploads.clear()
+                _, error = self.query("COPY (SELECT * FROM read_parquet('tidbfs:///data/orders.parquet')) "
+                                      "TO 'tidbfs:///output/fail.parquet' (FORMAT PARQUET);", ok=False)
+                self.assertNotIn("/output/fail.parquet", self.fixture.files)
+                self.assertTrue(self.fixture.uploads)
+                self.assertTrue(all(upload.get("aborted") for upload in self.fixture.uploads.values()))
+                self.assertNotIn("never-expose", error)
+
+    def test_multipart_expiry_refresh(self):
+        self.fixture.fault = "upload_expire"
+        self.query("COPY (SELECT * FROM read_parquet('tidbfs:///data/orders.parquet')) "
+                   "TO 'tidbfs:///output/refresh.parquet' (FORMAT PARQUET);")
+        self.assertTrue(self.fixture.upload_expired)
+
+    def test_query_error_discards_staging(self):
+        self.query("COPY (SELECT CASE WHEN i = 99999 THEN error('stop') ELSE i END AS id "
+                   "FROM range(100000) t(i)) TO 'tidbfs:///output/failed.csv' (FORMAT CSV);", ok=False)
+        self.assertNotIn("/output/failed.csv", self.fixture.files)
+
+    def test_temporary_output_and_empty_file(self):
+        self.query("COPY (SELECT 7 AS id) TO 'tidbfs:///output/temp.csv' (FORMAT CSV, USE_TMP_FILE true);")
+        out, _ = self.query("SELECT id FROM read_csv('tidbfs:///output/temp.csv');")
+        self.assertEqual(out, "7")
+        self.query("COPY (SELECT 1 AS id WHERE false) TO 'tidbfs:///output/empty.csv' (FORMAT CSV, HEADER false);")
+        self.assertEqual(self.fixture.files["/output/empty.csv"], b"")
+        # DuckDB's generic JoinPath strips URI-root slashes for temp siblings.
+        self.query("COPY (SELECT 8 AS id) TO 'tidbfs:///root.csv' (FORMAT CSV, USE_TMP_FILE true);")
+        out, _ = self.query("SELECT id FROM read_csv('tidbfs:///root.csv');")
+        self.assertEqual(out, "8")
+
+    def test_compressed_csv_roundtrip(self):
+        self.query("COPY (SELECT i AS id FROM range(100) t(i)) TO 'tidbfs:///output/data.csv.gz' "
+                   "(FORMAT CSV, COMPRESSION GZIP);")
+        out, _ = self.query("SELECT sum(id) FROM read_csv('tidbfs:///output/data.csv.gz');")
+        self.assertEqual(out, "4950")
+
+    def test_exact_threshold_and_upload_limit(self):
+        self.fixture.inline_threshold = 4
+        self.query("COPY (SELECT 'abc' AS value) TO 'tidbfs:///output/boundary.csv' (FORMAT CSV, HEADER false);")
+        self.assertEqual(self.fixture.files["/output/boundary.csv"], b"abc\n")
+        self.assertTrue(any(upload.get("complete") for upload in self.fixture.uploads.values()))
+        self.fixture.max_upload_bytes = 2
+        _, error = self.query("COPY (SELECT 'abc' AS value) TO 'tidbfs:///output/limit.csv' (FORMAT CSV, HEADER false);", ok=False)
+        self.assertIn("upload limit", error)
+        self.assertNotIn("/output/limit.csv", list(self.fixture.files))
 
     def test_expired_object_url_refresh(self):
         # Expire after the first range succeeds, so this exercises reuse/refresh.

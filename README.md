@@ -2,8 +2,8 @@
 
 [![CI](https://github.com/siddontang/duckdb-tidbfs/actions/workflows/ci.yml/badge.svg)](https://github.com/siddontang/duckdb-tidbfs/actions/workflows/ci.yml)
 
-`tidbfs` is a C++ DuckDB filesystem extension for read-only analytics over the
-TiDB Filesystem HTTP data plane. It works in the DuckDB CLI and does not require
+`tidbfs` is a C++ DuckDB filesystem extension for reading and writing analytics files over the
+TiDB Filesystem HTTP data plane, with experimental native `.duckdb` storage. It works in the DuckDB CLI and does not require
 Python, fsspec, FUSE, or downloading whole Parquet files. Python is used only by
 the build and test scripts.
 
@@ -11,7 +11,9 @@ the build and test scripts.
 
 The locally verified combination is DuckDB **v1.4.2, macOS arm64**. C++ extensions
 must be built against the exact DuckDB version and platform that loads them.
-Install the DuckDB C++ headers, a C++17 compiler, and libcurl headers/library.
+Install the DuckDB C++ headers, a C++17 compiler, Go 1.25.1 or newer, and libcurl headers/library.
+The build links the existing drive9 Go extent runtime into the C++ extension.
+Go is a build dependency; no helper process or Go installation is required at runtime.
 For Homebrew DuckDB on Apple Silicon:
 
 ```sh
@@ -47,6 +49,16 @@ SELECT region, sum(amount_cents)
 FROM read_parquet('tidbfs:///warehouse/day=*/*.parquet', hive_partitioning=true)
 WHERE day = '2026-10-17'
 GROUP BY region;
+
+COPY (SELECT * FROM range(100) t(id))
+TO 'tidbfs:///results/output.parquet' (FORMAT PARQUET);
+
+COPY (SELECT i AS id, i % 4 AS bucket FROM range(100) t(i))
+TO 'tidbfs:///results/partitioned' (FORMAT PARQUET, PARTITION_BY(bucket));
+
+EXPORT DATABASE 'tidbfs:///backups/run-001' (FORMAT PARQUET);
+-- In a fresh local/in-memory database with the extension and secret loaded:
+IMPORT DATABASE 'tidbfs:///backups/run-001';
 ```
 
 `ENDPOINT` is the filesystem data-plane base URL; `/v1/fs` is appended by the
@@ -58,7 +70,124 @@ through stdin rather than placing credentials in process arguments.
 The build is unsigned and is not published to DuckDB's extension repository.
 `INSTALL tidbfs` from a public repository is not available yet.
 
+Linux builds produce `tidbfs.duckdb_extension` and `libtidbfs_extent.so`;
+keep them in the same directory when using `LOAD '/path/tidbfs.duckdb_extension'`.
+To install into DuckDB's extension directory, run `python3 scripts/install.py`;
+it installs both files and verifies `LOAD tidbfs`. Plain SQL `INSTALL` copies
+only the extension, so it is insufficient for the Linux bundle. The separate
+runtime avoids glibc's static TLS limit when loading Go together with DuckDB.
+macOS builds contain the runtime in the extension itself.
+
+## Write support and compatibility
+
+For measured native database handoffs, see the
+[multi-GiB benchmark](docs/benchmarks/handoff-2026-10-18.md), including separate
+flush/close, worker startup, reopen, and client-cold/warm query timings.
+
+| Operation | Support |
+| --- | --- |
+| Read Parquet, CSV, JSON; glob/Hive pruning | Supported |
+| `COPY TO` Parquet, CSV, JSON; overwrite an output file | Supported |
+| Partitioned `COPY`, `APPEND`, `OVERWRITE` | Supported; APPEND adds dataset files |
+| `COPY ... USE_TMP_FILE true` | Supported through server rename |
+| `EXPORT DATABASE` / `IMPORT DATABASE` | Supported; data and SQL scripts are remote |
+| SQL DDL, DML and transactions in a local/in-memory database | Normal DuckDB behavior; import/export connects it to remote files |
+| Writable `ATTACH 'tidbfs+db:///database.duckdb'` | Experimental: native database, WAL, checkpoint and recovery over existing extent storage |
+| Writable native database on ordinary `tidbfs:///` | Use `tidbfs+db:///` to select extent I/O and database locking; both address the same filesystem |
+| Multi-file atomic export, rollback of external files | Not provided |
+
+Writable handles stage bytes in a private, unlinked local temporary file. This
+supports seek, offset writes and truncation without retaining the entire output
+in memory, but requires local scratch space proportional to open output files.
+On explicit close/sync, the extension publishes a whole generation. Small files
+use a conditional PUT; large files use V2 multipart uploads directly to object
+storage, without forwarding filesystem credentials. Expired part URLs get one
+refresh; failed multipart uploads are aborted on a best-effort basis.
+
+DuckDB's EXPORT script writers destroy handles without calling close. Their
+pending output is published at successful query end, with publication errors
+returned to the caller. Failed queries discard unpublished staging; files
+already published by a multi-file operation remain, as do directory changes.
+An ambiguous commit response is reported as failure and is not blindly retried.
+
+Writes carry the destination's expected revision (`0` for creation); conflicting
+revisions fail with HTTP 409. This is optimistic publication, not a lifetime file
+lock. The current write API compares revisions, not inode identity: a concurrent
+delete/recreate with the same revision is not fenced. Do not use concurrent
+namespace replacement as a database locking protocol. See the
+[compatibility matrix](docs/compatibility.md) for the implemented native mode and remaining gaps.
+
+## Native database mode (experimental)
+
+`tidbfs+db:///warehouse.duckdb` runs DuckDB's storage engine on the existing
+extent data plane. It addresses `/warehouse.duckdb` in the **same filesystem**
+as `/v1/fs/warehouse.duckdb`; its WAL is `/warehouse.duckdb.wal`. There is no
+separate volume, hidden `/data` mapping, new server endpoint, schema or feature
+flag. Ordinary listing and metadata APIs see these files.
+
+The C++ adapter calls a pinned, in-process drive9 extent client through
+a small in-process C ABI. That client already implements object blocks, caches,
+metadata sessions, POSIX locks and fsync. Metadata uses `/v1/extent/meta`,
+credentials use `/v1/data-credential`, and bytes use the existing object store.
+The extension reuses those implementations instead of rebuilding their protocol.
+Use an unscoped filesystem token, as required by the existing extent API.
+
+```sql
+CREATE SECRET fs (TYPE tidbfs, ENDPOINT 'https://YOUR_FILESYSTEM_ENDPOINT',
+                  TOKEN 'YOUR_FILESYSTEM_API_KEY');
+ATTACH 'tidbfs+db:///warehouse.duckdb' AS warehouse;
+CREATE TABLE warehouse.items AS SELECT * FROM range(100);
+CHECKPOINT warehouse;
+```
+
+Ordinary `tidbfs:///` analytical opens also recognize existing extent files and
+route their I/O through this adapter. New ordinary analytical output still uses
+revision-checked PUT/multipart. Native mode accepts arbitrary filenames; the
+`.duckdb` suffix is a convention, not a server rule.
+
+Locks are the existing **advisory inode locks**: one database writer or shared
+readers, with cooperating clients. Ordinary clients that ignore locks must not
+replace a live database or its WAL. The adapter stops after an ambiguous metadata
+response or a missed session deadline; it never reacquires ownership under an
+already-open DuckDB instance. Metadata requests are bounded and late successful
+responses cannot revive expired sessions. The shared extent transport also carries
+the existing session ID; servers advertising `session_guard: true` validate it in
+the same transaction as each metadata mutation, rejecting delayed old-session
+writes after cleanup. Older servers retain legacy behavior. Advisory locks still
+require cooperating clients.
+The initial write policy calls existing VFS fsync
+after each write before acknowledging it. This favors correctness over batching.
+See [setup, recovery behavior and live tests](docs/native-database.md).
+The live harness includes disposable RustFS tests for upload/download failures,
+lost responses, truncated reads, failed COMMIT and checkpoint crash recovery.
+The [interrupted-handoff demo](docs/demos/interrupted-handoff/README.md) disconnects
+a running writer from metadata and S3, waits for another worker to take over,
+then reconnects the old writer and verifies its COMMIT is rejected. It includes
+measured timing, full-row checksums, a GIF/MP4 and the reproducible fault harness.
+For shorter failure handoffs, use `SET GLOBAL tidbfs_heartbeat_ms=1000` before first extent
+access in a fresh DuckDB instance (~5 s session lifetime; default ~60 s).
+See [timing configuration and tradeoffs](docs/native-database.md#tuning-interrupted-handoff).
+The [local tuning benchmark](docs/benchmarks/handoff-tuning-2026-10-18.md) measured
+4.75 s median takeover with 1 s heartbeats, versus 57.68 s with the default.
+A [fresh reconnect test](docs/demos/reconnect-test-2026-10-18/README.md) records
+5.33 s takeover, rejected stale COMMIT and full-row validation, with a GIF and raw evidence.
+
+The value is twofold: analytical files let DuckDB's pruning reach remote byte
+ranges, while native mode lets a process leave SQL state that another process
+can recover, using the filesystem's existing storage machinery. Queries execute
+locally. This adds neither distributed SQL execution nor concurrent database
+writer processes. Extent performance and failure behavior still require broader
+production validation; it is not a claim of complete DuckDB compatibility.
+
 ## Read-path optimizations
+
+Existing extent analytical files on either URI use one shared POSIX lock and
+open inode per query, pinned across row-group handles and URI aliases until the
+query finishes or fails. Cooperating extent overwrites are excluded during that
+time. Both URI routes share one client registry and heartbeat configuration
+within the DuckDB instance.
+
+For ordinary inline and single-object files:
 
 * One metadata lookup per path/endpoint/credential **per query**, shared across
   DuckDB's row-group readers. Query end discards these entries; later queries
@@ -95,7 +224,12 @@ make test
 The tests execute actual DuckDB CLI queries against an instrumented HTTP fixture:
 column/row-group pruning, Hive and recursive globs, encoded paths, query cache
 expiry, signed URL reuse/refresh, credential stripping, invalid ranges, short
-responses, concurrent reads, changed revisions, and read-only enforcement.
+responses, concurrent reads, changed revisions, and database-lock rejection.
+The write tests cover format roundtrips, partition append/overwrite, temporary
+rename, empty files, multipart upload/expiry/abort, concurrent publication,
+deferred EXPORT failures, and remote export/import of tables and views.
+The real TiDB smoke also verifies native COPY uploads, partitioned output,
+temporary-file replacement and export/import following INSERT/UPDATE/DELETE.
 The wide-footer fixture verifies that prefetch reduces two range requests to one.
 
 For the real TiDB-backed inline path, start the updated fs server in local mode
@@ -124,10 +258,10 @@ is an explicit test setting; the server's default remains unchanged.
 
 ## Boundaries
 
-This version supports **read-only Parquet/CSV/JSON and other seekable analytics
-files**. It does not implement writable `.duckdb` databases, WAL/locking,
-`COPY TO tidbfs`, or extent-layout files. Use the existing client/FUSE for those
-workflows. No dataset-wide transaction/snapshot is implied. Inline changes
+The analytical `tidbfs:///` path supports **read/write analytics files**,
+including existing extent-layout files. Select `tidbfs+db:///` for native
+database access; it selects the extent adapter within the same filesystem. No dataset-wide
+transaction/snapshot is implied for analytical files. Inline changes
 fail with HTTP 412; single-object reads can finish from their pinned immutable
 generation, or fail if that generation is garbage-collected. Query-level
 caching does not provide a transaction-wide snapshot across SQL statements.

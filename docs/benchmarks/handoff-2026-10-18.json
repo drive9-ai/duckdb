@@ -1,0 +1,348 @@
+{
+  "started_utc": "2026-10-19T00:59:51.825409+00:00",
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "machine": "arm64",
+  "cpu": "Apple M4",
+  "memory_bytes": 25769803776,
+  "duckdb_version": "v1.4.2 (Andium) 68d7555f68",
+  "plugin_source_commit": "973313c2775fb7667a5aee9e6f2dc35d177b95b3",
+  "binary_sha256": {
+    "duckdb": "5bf6e20ca0c76f52e8f419bc167d3c6a91ecfe065187144687bdc24d3d1c6ef1",
+    "extension": "ea68e31db094cfdbc86d174460c202723f16224dabce8d421384cfabaae156a1",
+    "fs_server": "7e6603859632ed24e948a88238414adaa743f74ec03c5cc0aed37e794c8f1f48",
+    "tidb_server": "df445ea94d9563c8da6afdce2ecf886b9538167b4f04d3bc57cf955eb82dc6df",
+    "rustfs_server": "9e5bb7b9bc9b201ada61a7e65cf1faac85f3ecd0bc7026770e7834fdc4447a06"
+  },
+  "backend": "RustFS S3, TiDB unistore, all services on the same host over loopback",
+  "threads": 4,
+  "duckdb_memory_limit": "6GB",
+  "extent_cache_bytes": 67108864,
+  "row_payload_bytes": 64,
+  "initial_rows": 50331648,
+  "dirty_append_rows_per_trial": 131072,
+  "cache_definition": "client-cold = fresh DuckDB process and in-memory extent cache; warm = repeat the identical scan in that process. Object-service and OS caches are not purged.",
+  "scan_sql": "SELECT count(*), sum(id), sum(v1), sum(v2), sum(v3), sum(v4), sum(v5), sum(v6), sum(v7) FROM samples",
+  "trials": [
+    {
+      "mode": "checkpointed",
+      "trial": 1,
+      "wal_bytes_before_checkpoint": 0,
+      "checkpoint_seconds": 0.00021287499998834392,
+      "detach_seconds": 0.0023161670000035883,
+      "old_process_shutdown_seconds": 0.003318999999976313,
+      "flush_close_seconds": 0.005848041999968245,
+      "database_bytes": 3437244416,
+      "new_process_bootstrap_seconds": 0.019276292000029116,
+      "reopen_seconds": 0.027515541000013855,
+      "client_cold_scan_seconds": 26.725955458000044,
+      "warm_scan_seconds": [
+        0.6287916250000194,
+        0.5541839580000101
+      ],
+      "expected": [
+        "50331648",
+        "1266637370032128",
+        "464199458438057809724032474",
+        "464249534724773527434693219",
+        "464250186211054449014140794",
+        "464296816414065776827466395",
+        "464206702651947087303838103",
+        "464248462591298478487798613",
+        "464221054254668800534730558"
+      ],
+      "flush_to_first_result_seconds": 26.778595333000055,
+      "validated": true
+    },
+    {
+      "mode": "checkpointed",
+      "trial": 2,
+      "wal_bytes_before_checkpoint": 0,
+      "checkpoint_seconds": 0.00023054100000763356,
+      "detach_seconds": 0.003024166999978206,
+      "old_process_shutdown_seconds": 0.0031255840000312674,
+      "flush_close_seconds": 0.006380292000017107,
+      "database_bytes": 3437244416,
+      "new_process_bootstrap_seconds": 0.019282292000013967,
+      "reopen_seconds": 0.026031208000006245,
+      "client_cold_scan_seconds": 26.6800025,
+      "warm_scan_seconds": [
+        0.6171467500000176,
+        0.5521209579999891
+      ],
+      "expected": [
+        "50331648",
+        "1266637370032128",
+        "464199458438057809724032474",
+        "464249534724773527434693219",
+        "464250186211054449014140794",
+        "464296816414065776827466395",
+        "464206702651947087303838103",
+        "464248462591298478487798613",
+        "464221054254668800534730558"
+      ],
+      "flush_to_first_result_seconds": 26.731696292000038,
+      "validated": true
+    },
+    {
+      "mode": "checkpointed",
+      "trial": 3,
+      "wal_bytes_before_checkpoint": 0,
+      "checkpoint_seconds": 0.0002020409999659023,
+      "detach_seconds": 0.0028487090000339776,
+      "old_process_shutdown_seconds": 0.0034162919999971564,
+      "flush_close_seconds": 0.006467041999997036,
+      "database_bytes": 3437244416,
+      "new_process_bootstrap_seconds": 0.019702209000001858,
+      "reopen_seconds": 0.02577774999997473,
+      "client_cold_scan_seconds": 26.198028000000022,
+      "warm_scan_seconds": [
+        0.6069222079999577,
+        0.5578112499999861
+      ],
+      "expected": [
+        "50331648",
+        "1266637370032128",
+        "464199458438057809724032474",
+        "464249534724773527434693219",
+        "464250186211054449014140794",
+        "464296816414065776827466395",
+        "464206702651947087303838103",
+        "464248462591298478487798613",
+        "464221054254668800534730558"
+      ],
+      "flush_to_first_result_seconds": 26.249975000999996,
+      "validated": true
+    },
+    {
+      "mode": "checkpointed",
+      "trial": 4,
+      "wal_bytes_before_checkpoint": 0,
+      "checkpoint_seconds": 0.0002829580000138776,
+      "detach_seconds": 0.0031964579999907983,
+      "old_process_shutdown_seconds": 0.003698749999955453,
+      "flush_close_seconds": 0.007178165999960129,
+      "database_bytes": 3437244416,
+      "new_process_bootstrap_seconds": 0.01960508399997707,
+      "reopen_seconds": 0.028715292000015324,
+      "client_cold_scan_seconds": 26.773997208000026,
+      "warm_scan_seconds": [
+        0.6085824169999796,
+        0.6207355000000234
+      ],
+      "expected": [
+        "50331648",
+        "1266637370032128",
+        "464199458438057809724032474",
+        "464249534724773527434693219",
+        "464250186211054449014140794",
+        "464296816414065776827466395",
+        "464206702651947087303838103",
+        "464248462591298478487798613",
+        "464221054254668800534730558"
+      ],
+      "flush_to_first_result_seconds": 26.829495749999978,
+      "validated": true
+    },
+    {
+      "mode": "checkpointed",
+      "trial": 5,
+      "wal_bytes_before_checkpoint": 0,
+      "checkpoint_seconds": 0.00023666699996738316,
+      "detach_seconds": 0.0034240420000060112,
+      "old_process_shutdown_seconds": 0.0031854169999974147,
+      "flush_close_seconds": 0.006846125999970809,
+      "database_bytes": 3437244416,
+      "new_process_bootstrap_seconds": 0.020595583999977407,
+      "reopen_seconds": 0.03045187499998292,
+      "client_cold_scan_seconds": 26.740197834000014,
+      "warm_scan_seconds": [
+        0.6129116250000379,
+        0.5643680410000229
+      ],
+      "expected": [
+        "50331648",
+        "1266637370032128",
+        "464199458438057809724032474",
+        "464249534724773527434693219",
+        "464250186211054449014140794",
+        "464296816414065776827466395",
+        "464206702651947087303838103",
+        "464248462591298478487798613",
+        "464221054254668800534730558"
+      ],
+      "flush_to_first_result_seconds": 26.798091418999945,
+      "validated": true
+    },
+    {
+      "mode": "dirty_wal",
+      "trial": 1,
+      "old_append_commit_seconds": 0.9313625839999418,
+      "wal_bytes_before_checkpoint": 4105,
+      "checkpoint_seconds": 0.18923254200001338,
+      "detach_seconds": 0.005203542000003836,
+      "old_process_shutdown_seconds": 0.008513999999991029,
+      "flush_close_seconds": 0.20295008400000825,
+      "database_bytes": 3447730176,
+      "new_process_bootstrap_seconds": 0.01971462500000598,
+      "reopen_seconds": 0.03228691599997546,
+      "client_cold_scan_seconds": 26.85001008300003,
+      "warm_scan_seconds": [
+        0.6384378750000224,
+        0.575749500000029
+      ],
+      "expected": [
+        "50462720",
+        "1273243029667840",
+        "465405891915794932688292278",
+        "465458060940275740481435469",
+        "465462079287557581428679561",
+        "465505561869227273833927178",
+        "465417699276230278887888868",
+        "465456685182518726210000696",
+        "465427033953240261024920373"
+      ],
+      "flush_to_first_result_seconds": 27.10496170800002,
+      "validated": true
+    },
+    {
+      "mode": "dirty_wal",
+      "trial": 2,
+      "old_append_commit_seconds": 0.9200506660000656,
+      "wal_bytes_before_checkpoint": 4102,
+      "checkpoint_seconds": 2.3634375420000424,
+      "detach_seconds": 0.004001334000008683,
+      "old_process_shutdown_seconds": 0.007538416999977926,
+      "flush_close_seconds": 2.374977293000029,
+      "database_bytes": 3479973888,
+      "new_process_bootstrap_seconds": 0.020323333000078492,
+      "reopen_seconds": 0.027140375000044514,
+      "client_cold_scan_seconds": 26.842984083000033,
+      "warm_scan_seconds": [
+        0.6564767499999107,
+        0.5901858750000883
+      ],
+      "expected": [
+        "50593792",
+        "1279865869172736",
+        "466612467866123495635310965",
+        "466668416814943162698759315",
+        "466670322474462077863148872",
+        "466713586756785304617697064",
+        "466624711090437406552084083",
+        "466661861823513097239742705",
+        "466636696682187000324144127"
+      ],
+      "flush_to_first_result_seconds": 29.265425084000185,
+      "validated": true
+    },
+    {
+      "mode": "dirty_wal",
+      "trial": 3,
+      "old_append_commit_seconds": 1.194128542000044,
+      "wal_bytes_before_checkpoint": 4109,
+      "checkpoint_seconds": 2.364227458999949,
+      "detach_seconds": 0.003983084000083181,
+      "old_process_shutdown_seconds": 0.008256125000002612,
+      "flush_close_seconds": 2.3764666680000346,
+      "database_bytes": 3489673216,
+      "new_process_bootstrap_seconds": 0.02081016699992233,
+      "reopen_seconds": 0.028770833000066887,
+      "client_cold_scan_seconds": 27.025555833999988,
+      "warm_scan_seconds": [
+        0.6348868750000065,
+        0.5910268330000008
+      ],
+      "expected": [
+        "50724864",
+        "1286505888546816",
+        "467822636221729122669166851",
+        "467875119071877006514116215",
+        "467877061437560904888445001",
+        "467921211742555197469543315",
+        "467833512230384981602270320",
+        "467871109367001871133736081",
+        "467845107240010903571893219"
+      ],
+      "flush_to_first_result_seconds": 29.45160350200001,
+      "validated": true
+    },
+    {
+      "mode": "dirty_wal",
+      "trial": 4,
+      "old_append_commit_seconds": 0.8456879999999956,
+      "wal_bytes_before_checkpoint": 4106,
+      "checkpoint_seconds": 2.3643769169999587,
+      "detach_seconds": 0.005583000000001448,
+      "old_process_shutdown_seconds": 0.003658875000041917,
+      "flush_close_seconds": 2.373618792000002,
+      "database_bytes": 3498061824,
+      "new_process_bootstrap_seconds": 0.01951566599996113,
+      "reopen_seconds": 0.020982291999985136,
+      "client_cold_scan_seconds": 28.234455416999936,
+      "warm_scan_seconds": [
+        0.7102319589999979,
+        0.602404207999939
+      ],
+      "expected": [
+        "50855936",
+        "1293163087790080",
+        "469030078027282878211888499",
+        "469081368334991666949824715",
+        "469086970206909548984990022",
+        "469131665152794111436450688",
+        "469045234629272453137095486",
+        "469082026473432772619901166",
+        "469054510284849291887203058"
+      ],
+      "flush_to_first_result_seconds": 30.648572166999884,
+      "validated": true
+    },
+    {
+      "mode": "dirty_wal",
+      "trial": 5,
+      "old_append_commit_seconds": 0.8663264589999926,
+      "wal_bytes_before_checkpoint": 4104,
+      "checkpoint_seconds": 2.4440933750000795,
+      "detach_seconds": 0.003571708999970724,
+      "old_process_shutdown_seconds": 0.00766033399997923,
+      "flush_close_seconds": 2.4553254180000295,
+      "database_bytes": 3507236864,
+      "new_process_bootstrap_seconds": 0.0202737500000012,
+      "reopen_seconds": 0.027382916000078694,
+      "client_cold_scan_seconds": 27.618337709000002,
+      "warm_scan_seconds": [
+        0.6652826250000317,
+        0.6044885000000022
+      ],
+      "expected": [
+        "50987008",
+        "1299837466902528",
+        "470237458642842276136253751",
+        "470289714426188416863667059",
+        "470296994270432750815187252",
+        "470339750773663326936885533",
+        "470253598027926113408833987",
+        "470293187295197698834127606",
+        "470265732108052690333334711"
+      ],
+      "flush_to_first_result_seconds": 30.12131979300011,
+      "validated": true
+    }
+  ],
+  "prepare_create_seconds": 366.264873208,
+  "prepare_checkpoint_seconds": 0.24191824999996925,
+  "initial_expected": [
+    "50331648",
+    "1266637370032128",
+    "464199458438057809724032474",
+    "464249534724773527434693219",
+    "464250186211054449014140794",
+    "464296816414065776827466395",
+    "464206702651947087303838103",
+    "464248462591298478487798613",
+    "464221054254668800534730558"
+  ],
+  "initial_database_bytes": 3437244416,
+  "completed_utc": "2026-10-19T01:11:01.968024+00:00",
+  "complete": true
+}

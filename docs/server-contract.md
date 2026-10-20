@@ -15,7 +15,8 @@ server read-path changes before using this extension against an existing service
 * `X-Dat9-IsDir`, `X-Dat9-Content-Layout`, and optionally `X-Dat9-Mtime`
   (Unix seconds).
 
-The extension rejects missing/weak validators and extent-layout files. Metadata
+The ordinary byte-range path rejects missing/weak validators. Extent-layout
+files route to the existing extent runtime instead. Metadata
 is cached only within the current DuckDB query, with endpoint and credentials
 included in the cache key.
 
@@ -51,14 +52,58 @@ prefixes needed by the glob and preserves normal DuckDB partition pruning.
 Directory-list authorization is separate from file-read authorization; scoped
 credentials must permit both when a query uses globs.
 
+## Writes and namespace operations
+
+Writable outputs use the existing server write protocol:
+
+* `GET /v1/status`: `inline_threshold` and optionally `max_upload_bytes`.
+  Nonempty files **at or above** the threshold use multipart uploads.
+* HEAD of an existing output must include a positive `X-Dat9-Revision`.
+* `PUT /v1/fs/<path>` with `X-Dat9-Expected-Revision`: `0` creates only if
+  absent; a positive revision conditionally replaces the current generation.
+  Successful inline writes return JSON `{ "revision": <committed revision> }`.
+* `POST /v2/uploads/initiate` with `path`, `total_size`, `expected_revision`;
+  `/presign` with `part_number`; direct signed part PUTs; `/complete` with
+  `parts: [{number, etag}]`; `/abort` on failure. Required checksum contracts
+  are rejected until supported. Filesystem tokens and conditional headers are
+  never copied to object storage. Presigned headers are restricted to content
+  type and object-provider headers.
+* `POST /v1/fs/<directory>/?mkdir`, `DELETE ...?kind=file`,
+  `DELETE /v1/fs/<directory>/?recursive`, and `POST /v1/fs/<target>?rename`.
+  Rename sends `X-Dat9-Rename-Source` with `X-Dat9-Path-Encoding: base64url`.
+  Source and destination must resolve to the same endpoint and credentials.
+
+Revision conflicts return 409. Revision-only writes do not fence inode
+replacement or provide distributed file locking. Namespace mutations are not
+rolled back with a failed SQL transaction. Sync/close publishes the complete
+staged output; it is not a database WAL durability protocol. Server upload limits
+and credential permissions continue to apply.
+
 ## Consistency and scope
 
 Each query pins each opened file's version across its row-group readers. Inline
 updates fail instead of mixing revisions. Immutable object generations can
 continue serving their old bytes, or fail if garbage collection removes them.
+Extent analytical readers on either URI instead pin one existing shared POSIX
+lock and open inode for the whole query, across row-group handles and URI
+aliases. Query completion or failure releases the pin. Ordinary-route in-place
+writes to an existing extent file request an exclusive lock before truncating it.
+These locks exclude cooperating extent writers; other API clients can still
+bypass advisory locking or replace a path through namespace operations.
 There is no multi-file or transaction-wide snapshot guarantee.
 
 The included `scripts/smoke.py` verifies the actual TiDB-backed inline path using
 a disposable local filesystem with `DRIVE9_INLINE_THRESHOLD=16777216`. The
 ordinary `make test` suite uses an instrumented HTTP fixture and needs no server
 or credentials. Both execute the real DuckDB CLI.
+
+## Native databases
+
+`tidbfs+db:///` adapts the existing `/v1/extent/meta` and `/v1/data-credential`
+interfaces through the pinned drive9 extent client. File bytes use the existing
+object-block data plane. The path is the ordinary filesystem path; there are no
+additional storage tables or endpoints. `/v1/fs` remains the interface for
+ordinary metadata, conditional ranges, revision-checked uploads and namespace
+operations. Its existing extent hint routes analytical file I/O to the adapter.
+See [native extent adapter](native-database.md) for advisory locks, fsync,
+recovery and the remaining compatibility boundaries.
