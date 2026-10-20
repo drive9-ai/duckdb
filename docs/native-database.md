@@ -39,6 +39,11 @@ unscoped filesystem token. DuckDB secret scopes only control client routing.
 
 DuckDB's lock flags map to existing whole-file POSIX `setlk` locks with a stable
 handle owner. Multiple readers can hold shared locks; a writer excludes them.
+Analytical reads on either URI also acquire an existing shared lock even when
+DuckDB requests `NO_LOCK`. The same query shares one pinned open inode across
+its row-group handles and both URI spellings; query completion or failure
+releases it. Ordinary-route in-place writes to existing extent files acquire an
+exclusive lock before truncation.
 All clients writing a live database must honor these advisory locks. An ordinary
 PUT or rename is not fenced by a database-specific lease. This is the existing
 filesystem contract, not mandatory enforcement against arbitrary other writers.
@@ -100,6 +105,9 @@ The default remains 12,000 ms; the existing runtime derives session expiry as
 five heartbeat intervals. Set it **before the first extent access in a fresh
 DuckDB instance**. Changing it does not replace a live instance's session;
 subsequent opens reject a mismatched setting instead of acquiring new ownership.
+Both URI routes share the same instance-owned client registry. The heartbeat
+check applies across routes and credentials; opening a new URI cannot silently
+create another session with a different interval.
 
 ```sql
 LOAD 'build/tidbfs.duckdb_extension';

@@ -66,12 +66,13 @@ class NativeDatabaseTests(unittest.TestCase):
                 if stream:
                     stream.close()
 
-    def hold(self, statement):
+    def hold(self, statement, *, bail=True, endpoint=ENDPOINT):
         marker = Path(self.tmp.name) / (uuid.uuid4().hex + '.csv')
-        child = subprocess.Popen([DUCKDB, '-unsigned', '-bail'], stdin=subprocess.PIPE,
+        child = subprocess.Popen([DUCKDB, '-unsigned'] + (['-bail'] if bail else []), stdin=subprocess.PIPE,
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.children.append(child)
-        child.stdin.write(INIT + statement + f" COPY (SELECT 1) TO {quote(marker)};\n")
+        child.stdin.write(INIT.replace(quote(ENDPOINT), quote(endpoint)) + statement +
+                          f"\nCOPY (SELECT 1) TO {quote(marker)};\n")
         child.stdin.flush()
         until = time.monotonic() + 120
         while not marker.exists():
@@ -229,6 +230,130 @@ class NativeDatabaseTests(unittest.TestCase):
                     f'ATTACH {quote(self.uri + ".other")} AS other;', fail=True)
         self.assertIn('fresh DuckDB instance', error)
         self.assertTrue(sql(self.readonly + 'SELECT n FROM heartbeat_config;').endswith('42'))
+
+    def test_heartbeat_is_fixed_across_uri_routes(self):
+        parquet = self.uri + '.parquet'
+        ordinary = parquet.replace('tidbfs+db://', 'tidbfs://', 1)
+        sql(f"COPY (SELECT 42 n) TO {quote(parquet)} (FORMAT PARQUET);")
+        for first, second in ((ordinary, parquet), (parquet, ordinary)):
+            with self.subTest(first=first):
+                error = sql(f'SELECT n FROM read_parquet({quote(first)}); '
+                            'SET GLOBAL tidbfs_heartbeat_ms=20000; '
+                            f'SELECT n FROM read_parquet({quote(second)});', fail=True)
+                self.assertIn('fresh DuckDB instance', error)
+        error = sql(f'SELECT n FROM read_parquet({quote(ordinary)}); '
+                    'SET GLOBAL tidbfs_heartbeat_ms=20000; ' + self.attach, fail=True)
+        self.assertIn('fresh DuckDB instance', error)
+
+    def test_uri_routes_share_one_extent_session(self):
+        parquet = self.uri + '.parquet'
+        ordinary = parquet.replace('tidbfs+db://', 'tidbfs://', 1)
+        sql(f"COPY (SELECT 42 n) TO {quote(parquet)} (FORMAT PARQUET);")
+        for first, second in ((ordinary, parquet), (parquet, ordinary)):
+            with self.subTest(first=first):
+                proxy = FaultProxy(ENDPOINT)
+                try:
+                    attach = f'ATTACH {quote(self.uri + uuid.uuid4().hex)} AS remote; USE remote; '
+                    result = sql(f'SELECT n FROM read_parquet({quote(first)}); '
+                                 f'SELECT n FROM read_parquet({quote(second)}); ' + attach +
+                                 'SELECT 43; USE memory; DETACH remote;', endpoint=proxy.url)
+                    self.assertTrue(result.endswith('43'), result)
+                    with proxy.mu:
+                        registrations = [e for e in proxy.events if e['op'] == 'new_session']
+                    self.assertEqual(len(registrations), 1, 'URI routes created separate extent sessions')
+                finally:
+                    proxy.close()
+
+    def test_analytical_extent_scans_exclude_cross_route_writers(self):
+        rows = 131072
+        replacement = ('COPY (SELECT 7 i, repeat(md5(7::VARCHAR),2) payload) TO {} '
+                       '(FORMAT PARQUET, USE_TMP_FILE false);')
+        for direct in (False, True):
+            parquet = self.uri + uuid.uuid4().hex + '.parquet'
+            ordinary = parquet.replace('tidbfs+db://', 'tidbfs://', 1)
+            read_uri, write_uri = (parquet, ordinary) if direct else (ordinary, parquet)
+            with self.subTest(read_uri=read_uri):
+                sql(f'COPY (SELECT i, repeat(md5(i::VARCHAR),2) payload FROM range({rows}) t(i)) '
+                    f'TO {quote(parquet)} (FORMAT PARQUET, COMPRESSION UNCOMPRESSED, ROW_GROUP_SIZE 2048);')
+                # Pause the required slice-map response, rather than a possible
+                # background S3 prefetch. The query cannot finish this read
+                # until the gate opens. No metadata/session rows are edited.
+                proxy = FaultProxy(ENDPOINT)
+                self.addCleanup(proxy.close)
+                with proxy.mu:
+                    proxy.rule = {'method': 'POST', 'op': 'read', 'mode': 'hold_ack', 'count': 1}
+                marker = Path(self.tmp.name) / (uuid.uuid4().hex + '.csv')
+                child = subprocess.Popen([DUCKDB, '-unsigned', '-bail', '-csv', '-noheader'],
+                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                self.children.append(child)
+                child.stdin.write(INIT.replace(quote(ENDPOINT), quote(proxy.url)) + 'SET threads=4; '
+                                  f'SELECT count(*),sum(i),count(*) FILTER(WHERE payload<>repeat(md5(i::VARCHAR),2)) '
+                                  f'FROM read_parquet({quote(read_uri)}); '
+                                  f'COPY (SELECT 1) TO {quote(marker)};\n')
+                child.stdin.flush()
+                try:
+                    until = time.monotonic() + 45
+                    while True:
+                        with proxy.mu:
+                            events = [e.copy() for e in proxy.events]
+                        if any(e['fault'] == 'hold_ack' and e.get('status') == 200 for e in events):
+                            self.assertEqual(sum(e['op'] == 'setlk' for e in events), 1,
+                                             'Query released or reacquired its pinned read lock')
+                            break
+                        if child.poll() is not None:
+                            self.fail(child.stderr.read().replace(TOKEN, '<redacted>'))
+                        if time.monotonic() > until:
+                            self.fail('Analytical query did not reach the gated slice-map read')
+                        time.sleep(0.05)
+                    self.assertFalse(marker.exists(), 'Reader completed before the writer raced it')
+                    # Write through the direct extent adapter, which requests
+                    # the existing exclusive inode lock. Ordinary HTTP
+                    # namespace replacement is a separate advisory-lock limit.
+                    self.assertIn('locked', sql(replacement.format(quote(parquet)), fail=True))
+                finally:
+                    proxy.release.set()
+                until = time.monotonic() + 45
+                while not marker.exists():
+                    if child.poll() is not None:
+                        self.fail(child.stderr.read().replace(TOKEN, '<redacted>'))
+                    if time.monotonic() > until:
+                        self.fail('Analytical query did not finish after the read gate opened')
+                    time.sleep(0.05)
+                # Keep the reader's DuckDB instance/session alive: QueryEnd,
+                # rather than disconnect, must release every pinned read lock.
+                self.assertIsNone(child.poll())
+                sql(replacement.format(quote(parquet)))
+                sql(replacement.format(quote(write_uri)))
+                with proxy.mu:
+                    locks = [e.copy() for e in proxy.events if e['op'] == 'setlk']
+                self.assertEqual(len(locks), 2, 'Query must acquire once and release once')
+                self.assertNotEqual(locks[0]['ltype'], locks[1]['ltype'])
+                self.finish(child)
+                result = child.stdout.read().strip()
+                self.assertEqual(result.splitlines()[-1], f'{rows},{rows*(rows-1)//2},0')
+                self.assertEqual(sql(f'SELECT i FROM read_parquet({quote(read_uri)});').splitlines()[-1], '7')
+
+    def test_failed_analytical_extent_query_releases_read_lock(self):
+        parquet = self.uri + '.parquet'
+        ordinary = parquet.replace('tidbfs+db://', 'tidbfs://', 1)
+        for read_uri, write_uri in ((ordinary, parquet), (parquet, ordinary)):
+            with self.subTest(read_uri=read_uri):
+                sql(f'COPY (SELECT 42 n) TO {quote(parquet)} (FORMAT PARQUET);')
+                proxy = FaultProxy(ENDPOINT)
+                self.addCleanup(proxy.close)
+                # Leave the CLI/instance alive after the deliberate error, so
+                # disconnect cannot conceal a missing QueryEnd release.
+                child = self.hold(
+                    f"SELECT error('deliberate analytical failure') FROM read_parquet({quote(read_uri)});",
+                    bail=False, endpoint=proxy.url)
+                with proxy.mu:
+                    locks = [e.copy() for e in proxy.events if e['op'] == 'setlk']
+                self.assertEqual(len(locks), 2, 'Failed query leaked its shared read lock')
+                self.assertNotEqual(locks[0]['ltype'], locks[1]['ltype'])
+                sql(f'COPY (SELECT 43 n) TO {quote(write_uri)} (FORMAT PARQUET, USE_TMP_FILE false);')
+                child.stdin.close()
+                self.assertNotEqual(child.wait(timeout=30), 0)
+                self.assertIn('deliberate analytical failure', child.stderr.read())
 
     def test_delayed_metadata_ack_times_out_without_replay(self):
         sql(self.attach + 'CREATE TABLE delayed(id INTEGER); CHECKPOINT;')

@@ -84,6 +84,12 @@ and credential permissions continue to apply.
 Each query pins each opened file's version across its row-group readers. Inline
 updates fail instead of mixing revisions. Immutable object generations can
 continue serving their old bytes, or fail if garbage collection removes them.
+Extent analytical readers on either URI instead pin one existing shared POSIX
+lock and open inode for the whole query, across row-group handles and URI
+aliases. Query completion or failure releases the pin. Ordinary-route in-place
+writes to an existing extent file request an exclusive lock before truncating it.
+These locks exclude cooperating extent writers; other API clients can still
+bypass advisory locking or replace a path through namespace operations.
 There is no multi-file or transaction-wide snapshot guarantee.
 
 The included `scripts/smoke.py` verifies the actual TiDB-backed inline path using

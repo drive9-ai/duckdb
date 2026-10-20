@@ -184,12 +184,17 @@ struct Config {
 // query-local, so those handles use the same generation without N HEAD/redirects.
 // Byte caches remain handle-local: their lifetime and memory scale with active
 // readers, not with every file ever mentioned by a connection.
+struct ExtentHandle;
+
 struct FileVersion {
 	std::mutex mu;
 	bool initialized = false;
 	idx_t size = 0;
 	int64_t mtime = 0;
 	string etag, object_url, object_etag;
+	// Extent files use the existing shared lock instead of immutable objects.
+	// Keep its owning handle until QueryEnd, across all row-group handles.
+	std::shared_ptr<ExtentHandle> extent;
 };
 
 struct QueryFiles : ClientContextState {
@@ -779,6 +784,7 @@ struct TiDBHandle : FileHandle {
 class TiDBFileSystem : public FileSystem {
 	TiDBDatabaseFileSystem extent_fs;
 public:
+	explicit TiDBFileSystem(std::shared_ptr<ExtentClients> clients) : extent_fs(std::move(clients)) { }
 	string GetName() const override { return "tidbfs"; }
 	bool CanHandleFile(const string &path) override { return NormalizeURI(path).compare(0, 9, "tidbfs://") == 0; }
 	bool CanSeek() override { return true; }
@@ -804,10 +810,14 @@ public:
 		auto config = ReadConfig(opener, path);
 		auto version = make_shared_ptr<FileVersion>();
 		if (auto context = FileOpener::TryGetClientContext(opener)) {
-			version = context->registered_state->GetOrCreate<QueryFiles>("tidbfs.query_files")->Get(config, path);
+			version = context->registered_state->GetOrCreate<QueryFiles>("tidbfs.query_files")->Get(config, NormalizeURI(path));
 		}
 		auto handle = make_uniq<TiDBHandle>(*this, path, flags, std::move(config), version);
-		std::lock_guard<std::mutex> lock(version->mu);
+		std::unique_lock<std::mutex> lock(version->mu);
+		if (version->extent) {
+			lock.unlock();
+			return extent_fs.OpenFile(path, flags, opener);
+		}
 		if (version->initialized) {
 			handle->size = version->size;
 			handle->mtime = version->mtime;
@@ -823,6 +833,7 @@ public:
 			throw IOException("tidbfs cannot open a directory as a file");
 		}
 		if (r.Header("x-dat9-content-layout") == "extent") {
+			lock.unlock();
 			return extent_fs.OpenFile(path, flags, opener);
 		}
 		handle->size = idx_t(Number(r.Header("content-length")));
@@ -860,7 +871,8 @@ public:
 			if (r.Header("x-dat9-isdir") == "true") {
 				throw IOException("tidbfs cannot write a directory as a file");
 			}
-			if (r.Header("x-dat9-content-layout") == "extent") return extent_fs.OpenFile(path, flags, opener);
+			if (r.Header("x-dat9-content-layout") == "extent")
+				return extent_fs.OpenFile(path, flags | FileLockType::WRITE_LOCK, opener);
 			if (r.Header("x-dat9-content-layout") != "single" && !r.Header("x-dat9-content-layout").empty()) {
 				throw NotImplementedException("tidbfs writes require single-file content layout");
 			}
@@ -1201,8 +1213,9 @@ void LoadTiDBFS(ExtensionLoader &loader) {
 		    if (value.IsNull() || value.GetValue<int64_t>() < 1000 || value.GetValue<int64_t>() > 600000)
 			    throw InvalidInputException("tidbfs_heartbeat_ms must be between 1000 and 600000");
 	    }, SetScope::GLOBAL);
-	FileSystem::GetFileSystem(loader.GetDatabaseInstance()).RegisterSubSystem(make_uniq<TiDBFileSystem>());
-	FileSystem::GetFileSystem(loader.GetDatabaseInstance()).RegisterSubSystem(make_uniq<TiDBDatabaseFileSystem>());
+	auto clients = std::make_shared<ExtentClients>();
+	FileSystem::GetFileSystem(loader.GetDatabaseInstance()).RegisterSubSystem(make_uniq<TiDBFileSystem>(clients));
+	FileSystem::GetFileSystem(loader.GetDatabaseInstance()).RegisterSubSystem(make_uniq<TiDBDatabaseFileSystem>(clients));
 }
 
 } // namespace duckdb

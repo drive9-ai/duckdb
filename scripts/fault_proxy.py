@@ -82,6 +82,8 @@ class FaultProxy:
                             if rule['count'] > 0:
                                 rule['count'] -= 1
                     event = {'method': self.command, 'path': self.path, 'op': op, 'fault': mode}
+                    if op == 'setlk':
+                        event['ltype'] = json.loads(data).get('ltype')
                     if eligible:
                         owner.events.append(event)
                 if mode in ('unavailable', 'denied'):

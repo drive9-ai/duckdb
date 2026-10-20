@@ -8,7 +8,7 @@ DuckDB or POSIX compatibility claim.
 | --- | --- | --- |
 | Parquet/CSV/JSON, Hive/globs, partition COPY | Supported | Extent I/O; use analytical URI for globs |
 | New analytical output | Revision-checked PUT/multipart | Existing extent creation |
-| Existing extent analytical files | Automatically routed to extent runtime | Extent runtime |
+| Existing extent analytical files | Automatically routed, query-lifetime shared lock | Same query-lifetime shared lock |
 | Writable native ATTACH, catalog and DML | Use explicit database URI | Existing extent files |
 | COMMIT/ROLLBACK, checkpoint and reopen | Local engine or attached database | Native WAL and pages on extent storage |
 | One writer or shared readers | CAS publication for ordinary output | Existing advisory POSIX locks |
@@ -18,13 +18,14 @@ DuckDB or POSIX compatibility claim.
 
 ## Verification
 
-`make test` builds and loads the extension and runs 24 analytical CLI fixtures.
+`make test` builds and loads the extension and runs 25 analytical CLI fixtures.
 `scripts/test_native_live.py` runs bridge conformance, native DuckDB tests and
 client/server restart checks against disposable TiDB and filesystem services.
 See [the native adapter](native-database.md) for the exact failure scenarios.
 Server-side range validators, binary projections, shared-schema isolation and
 existing extent regressions run with `--fs-source`.
-Public CI runs six native compatibility cases and four transient S3 fault cases
+Public CI runs six native compatibility cases, four cross-route locking/session
+regressions and four transient S3 fault cases
 on the public upstream server and disposable RustFS;
 the complete recovery suite runs against current `tidbcloud/fs`, whose checkout
 is private. The harness defaults to the complete suite, including failure tests.

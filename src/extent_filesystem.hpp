@@ -41,12 +41,31 @@ struct ExtentClient {
 	}
 };
 
+// Both URI routes belong to one DuckDB instance. Share session ownership and
+// enforce its heartbeat setting even when another endpoint/credential is used.
+struct ExtentClients {
+	std::mutex mu;
+	std::map<std::pair<string, string>, std::shared_ptr<ExtentClient>> clients;
+	int64_t heartbeat_ms = 0;
+	std::shared_ptr<ExtentClient> Get(const Config &config) {
+		std::lock_guard<std::mutex> lock(mu);
+		if (heartbeat_ms && heartbeat_ms != config.heartbeat_ms)
+			throw InvalidInputException("Set tidbfs_heartbeat_ms before first extent access; use a fresh DuckDB instance to change it");
+		auto &client = clients[{config.endpoint, config.token}];
+		if (!client)
+			client = std::make_shared<ExtentClient>(config);
+		heartbeat_ms = config.heartbeat_ms;
+		return client;
+	}
+};
+
 struct ExtentHandle : FileHandle {
 	std::shared_ptr<ExtentClient> client;
 	uint64_t handle;
 	idx_t position = 0, size;
 	bool closed = false;
 	std::mutex mu;
+	std::shared_ptr<ExtentHandle> read_pin;
 	ExtentHandle(FileSystem &fs, const string &path, FileOpenFlags flags, std::shared_ptr<ExtentClient> c,
 				 const nlohmann::json &info)
 		: FileHandle(fs, path, flags), client(std::move(c)), handle(uint64_t(JSONNumber(info, "handle"))),
@@ -54,6 +73,8 @@ struct ExtentHandle : FileHandle {
 		if (flags.OpenForAppending())
 			position = size;
 	}
+	ExtentHandle(FileSystem &fs, const string &path, FileOpenFlags flags, std::shared_ptr<ExtentHandle> pin)
+	    : FileHandle(fs, path, flags), client(pin->client), handle(pin->handle), size(pin->size), read_pin(std::move(pin)) { }
 	~ExtentHandle() override {
 		try {
 			Close();
@@ -65,7 +86,10 @@ struct ExtentHandle : FileHandle {
 		if (closed)
 			return;
 		closed = true;
-		client->Call({{"op", "close"}, {"handle", handle}});
+		if (read_pin)
+			read_pin.reset();
+		else
+			client->Call({{"op", "close"}, {"handle", handle}});
 	}
 	void Check(bool writing = false) {
 		if (closed)
@@ -107,30 +131,15 @@ struct ExtentHandle : FileHandle {
 };
 
 class TiDBDatabaseFileSystem : public FileSystem {
-	std::mutex mu;
-	std::map<std::pair<string, string>, std::shared_ptr<ExtentClient>> clients;
+	std::shared_ptr<ExtentClients> clients;
 	std::shared_ptr<ExtentClient> Client(const string &path, optional_ptr<FileOpener> opener) {
-		auto config = ReadConfig(opener, path);
-		std::lock_guard<std::mutex> lock(mu);
-		auto &c = clients[{config.endpoint, config.token}];
-		if (!c)
-			c = std::make_shared<ExtentClient>(config);
-		else if (c->heartbeat_ms != config.heartbeat_ms)
-			throw InvalidInputException("Set tidbfs_heartbeat_ms before first extent access; use a fresh DuckDB instance to change it");
-		return c;
+		return clients->Get(ReadConfig(opener, path));
 	}
 	nlohmann::json Stat(const string &path, optional_ptr<FileOpener> opener) {
 		return Client(path, opener)->Call({{"op", "stat"}, {"path", ExtentPath(path)}});
 	}
 
-  public:
-	string GetName() const override { return "tidbfs_extent"; }
-	bool CanHandleFile(const string &path) override { return NormalizeURI(path).compare(0, 13, "tidbfs+db:///") == 0; }
-	bool CanSeek() override { return true; }
-	bool OnDiskFile(FileHandle &) override { return false; }
-	bool IsManuallySet() override { return true; }
-	unique_ptr<FileHandle> OpenFile(const string &path, FileOpenFlags flags, optional_ptr<FileOpener> opener) override {
-		auto c = Client(path, opener);
+	unique_ptr<ExtentHandle> OpenExtent(const string &path, FileOpenFlags flags, std::shared_ptr<ExtentClient> c) {
 		auto p = ExtentPath(path);
 		auto info = c->Call({{"op", "stat"}, {"path", p}});
 		bool exists = info.at("exists").get<bool>();
@@ -149,6 +158,37 @@ class TiDBDatabaseFileSystem : public FileSystem {
 						{"truncate", flags.OverwriteExistingFile()},
 						{"lock", lock}});
 		return make_uniq<ExtentHandle>(*this, path, flags, std::move(c), info);
+	}
+
+  public:
+	explicit TiDBDatabaseFileSystem(std::shared_ptr<ExtentClients> clients) : clients(std::move(clients)) { }
+	string GetName() const override { return "tidbfs_extent"; }
+	bool CanHandleFile(const string &path) override { return NormalizeURI(path).compare(0, 13, "tidbfs+db:///") == 0; }
+	bool CanSeek() override { return true; }
+	bool OnDiskFile(FileHandle &) override { return false; }
+	bool IsManuallySet() override { return true; }
+	unique_ptr<FileHandle> OpenFile(const string &path, FileOpenFlags flags, optional_ptr<FileOpener> opener) override {
+		auto config = ReadConfig(opener, path);
+		auto client = clients->Get(config);
+		if (flags.OpenForReading() && !flags.OpenForWriting() && flags.Lock() == FileLockType::NO_LOCK) {
+			// Parquet/CSV readers request NO_LOCK. Pin one shared lock for the
+			// whole query, including opens through the other URI and row groups
+			// whose handles are opened after an earlier reader has closed.
+			if (auto context = FileOpener::TryGetClientContext(opener)) {
+				auto version = context->registered_state->GetOrCreate<QueryFiles>("tidbfs.query_files")
+				                   ->Get(config, "tidbfs://" + ExtentPath(path));
+				std::lock_guard<std::mutex> lock(version->mu);
+				if (!version->extent) {
+					auto pin = OpenExtent(path, flags | FileLockType::READ_LOCK, client);
+					if (!pin)
+						return nullptr;
+					version->extent = std::shared_ptr<ExtentHandle>(pin.release());
+				}
+				return make_uniq<ExtentHandle>(*this, path, flags, version->extent);
+			}
+			flags = flags | FileLockType::READ_LOCK;
+		}
+		return OpenExtent(path, flags, std::move(client));
 	}
 	void Read(FileHandle &base, void *buffer, int64_t count, idx_t offset) override {
 		auto &h = base.Cast<ExtentHandle>();

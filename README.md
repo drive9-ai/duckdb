@@ -181,6 +181,12 @@ production validation; it is not a claim of complete DuckDB compatibility.
 
 ## Read-path optimizations
 
+Existing extent analytical files on either URI use one shared POSIX lock and
+open inode per query, pinned across row-group handles and URI aliases until the
+query finishes or fails. Cooperating extent overwrites are excluded during that
+time. Both URI routes share one client registry and heartbeat configuration
+within the DuckDB instance.
+
 For ordinary inline and single-object files:
 
 * One metadata lookup per path/endpoint/credential **per query**, shared across

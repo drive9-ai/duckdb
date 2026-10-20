@@ -68,6 +68,10 @@ jobs:
             NativeDatabaseTests.test_catalog_transactions_checkpoint_reopen \
             NativeDatabaseTests.test_multiple_databases_and_arbitrary_filename \
             NativeDatabaseTests.test_extent_files_share_the_normal_namespace \
+            NativeDatabaseTests.test_analytical_extent_scans_exclude_cross_route_writers \
+            NativeDatabaseTests.test_heartbeat_is_fixed_across_uri_routes \
+            NativeDatabaseTests.test_uri_routes_share_one_extent_session \
+            NativeDatabaseTests.test_failed_analytical_extent_query_releases_read_lock \
             NativeDatabaseTests.test_external_sort_with_remote_temporary_files \
             NativeDatabaseTests.test_out_of_memory_cleans_up_without_abort \
             NativeDatabaseTests.test_writer_exclusion_renewal_and_shared_readers \
