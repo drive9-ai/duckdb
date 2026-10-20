@@ -171,6 +171,11 @@ class TiDBDatabaseFileSystem : public FileSystem {
 		auto config = ReadConfig(opener, path);
 		auto client = clients->Get(config);
 		if (flags.OpenForReading() && !flags.OpenForWriting() && flags.Lock() == FileLockType::NO_LOCK) {
+			// ATTACH probes the format with READ|NULL_IF_NOT_EXISTS before
+			// opening the database with WRITE_LOCK. Its short-lived probe must
+			// release its lock when closed, rather than retaining it to QueryEnd.
+			if (flags.ReturnNullIfNotExists())
+				return OpenExtent(path, flags | FileLockType::READ_LOCK, std::move(client));
 			// Parquet/CSV readers request NO_LOCK. Pin one shared lock for the
 			// whole query, including opens through the other URI and row groups
 			// whose handles are opened after an earlier reader has closed.
@@ -186,7 +191,6 @@ class TiDBDatabaseFileSystem : public FileSystem {
 				}
 				return make_uniq<ExtentHandle>(*this, path, flags, version->extent);
 			}
-			flags = flags | FileLockType::READ_LOCK;
 		}
 		return OpenExtent(path, flags, std::move(client));
 	}
