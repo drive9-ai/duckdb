@@ -272,6 +272,7 @@ class NativeDatabaseTests(unittest.TestCase):
             parquet = self.uri + uuid.uuid4().hex + '.parquet'
             ordinary = parquet.replace('tidbfs+db://', 'tidbfs://', 1)
             read_uri, write_uri = (parquet, ordinary) if direct else (ordinary, parquet)
+            other_uri = ordinary if direct else parquet
             with self.subTest(read_uri=read_uri):
                 sql(f'COPY (SELECT i, repeat(md5(i::VARCHAR),2) payload FROM range({rows}) t(i)) '
                     f'TO {quote(parquet)} (FORMAT PARQUET, COMPRESSION UNCOMPRESSED, ROW_GROUP_SIZE 2048);')
@@ -288,7 +289,8 @@ class NativeDatabaseTests(unittest.TestCase):
                 self.children.append(child)
                 child.stdin.write(INIT.replace(quote(ENDPOINT), quote(proxy.url)) + 'SET threads=4; '
                                   f'SELECT count(*),sum(i),count(*) FILTER(WHERE payload<>repeat(md5(i::VARCHAR),2)) '
-                                  f'FROM read_parquet({quote(read_uri)}); '
+                                  f'FROM (SELECT * FROM read_parquet({quote(read_uri)}) UNION ALL '
+                                  f'SELECT * FROM read_parquet({quote(other_uri)})); '
                                   f'COPY (SELECT 1) TO {quote(marker)};\n')
                 child.stdin.flush()
                 try:
@@ -330,7 +332,7 @@ class NativeDatabaseTests(unittest.TestCase):
                 self.assertNotEqual(locks[0]['ltype'], locks[1]['ltype'])
                 self.finish(child)
                 result = child.stdout.read().strip()
-                self.assertEqual(result.splitlines()[-1], f'{rows},{rows*(rows-1)//2},0')
+                self.assertEqual(result.splitlines()[-1], f'{rows*2},{rows*(rows-1)},0')
                 self.assertEqual(sql(f'SELECT i FROM read_parquet({quote(read_uri)});').splitlines()[-1], '7')
 
     def test_failed_analytical_extent_query_releases_read_lock(self):
