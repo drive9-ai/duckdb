@@ -883,6 +883,9 @@ public:
 		auto handle = make_uniq<TiDBHandle>(*this, path, flags, ReadConfig(opener, path), make_shared_ptr<FileVersion>());
 		auto &h = *handle;
 		h.deferred = context->registered_state->GetOrCreate<DeferredWrites>("tidbfs.pending_writes");
+		// Reserve cleanup protection before I/O: OpenFile itself can fail
+		// after COPY observed absence and another publisher created this path.
+		h.deferred->Preserve(h.config, path);
 		auto r = h.http.Request(h.Endpoint(), h.config.token, true, {}, 0);
 		bool exists = r.status != 404;
 		if (exists) {

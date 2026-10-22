@@ -19,7 +19,7 @@ DuckDB or POSIX compatibility claim.
 
 ## Verification
 
-`make test` builds and loads the extension and runs 28 analytical CLI fixtures.
+`make test` builds and loads the extension and runs 29 analytical CLI fixtures.
 `scripts/test_native_live.py` runs bridge conformance, native DuckDB tests and
 client/server restart checks against disposable TiDB and filesystem services.
 See [the native adapter](native-database.md) for the exact failure scenarios.

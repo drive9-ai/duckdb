@@ -26,7 +26,7 @@ def build_linux(args, version, target, build):
         flags += " -D_GLIBCXX_USE_CXX11_ABI=0"
     command = ["cmake", "-S", str(source), "-B", str(cmake_build),
                "-DCMAKE_BUILD_TYPE=Release", "-DBUILD_UNITTESTS=OFF", "-DBUILD_SHELL=OFF",
-               "-DDISABLE_BUILTIN_EXTENSIONS=ON", "-DEXTENSION_STATIC_BUILD=ON",
+               "-DSTATICALLY_LINK_EXTENSIONS=core_functions", "-DEXTENSION_STATIC_BUILD=ON",
                "-DOVERRIDE_GIT_DESCRIBE=" + version + "-0-g0123456789",
                "-DDUCKDB_EXTENSION_CONFIGS=" + str(ROOT / "extension_config.cmake"),
                "-DCMAKE_CXX_COMPILER=" + os.environ.get("CXX", "c++"),

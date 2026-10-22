@@ -197,6 +197,13 @@ class Fixture:
                     return self.reply(403)
                 if not object_read and self.headers.get("Authorization") != "Bearer fixture-token":
                     return self.reply(403)
+                if head and fixture.fault == "open_race" and path == "/output/open-race.csv":
+                    # DuckDB's bind/ownership probes saw an absent destination.
+                    # Another publisher wins just as this writer's open fails.
+                    probes = sum(r["method"] == "HEAD" and r["path"] == path for r in fixture.requests)
+                    if probes == 4:
+                        fixture.files[path] = b"id\n77\n"
+                        return self.reply(503, head=True)
                 if target.query == "list=1":
                     entries = {}
                     for name, body in fixture.files.items():
@@ -524,6 +531,13 @@ class ExtensionTest(unittest.TestCase):
         self.assertFalse(any(r["method"] == "DELETE" for r in self.fixture.requests))
         out, _ = self.query("SELECT id FROM read_csv('tidbfs:///output/uncertain.csv');")
         self.assertEqual(out, "42")
+
+    def test_failed_open_does_not_delete_concurrent_publisher(self):
+        self.fixture.fault = "open_race"
+        _, error = self.query("COPY (SELECT 42 AS id) TO 'tidbfs:///output/open-race.csv' (FORMAT CSV);", ok=False)
+        self.assertIn("HTTP 503", error)
+        self.assertEqual(self.fixture.files.get("/output/open-race.csv"), b"id\n77\n")
+        self.assertFalse(any(r["method"] == "DELETE" for r in self.fixture.requests))
 
     def test_temporary_output_and_empty_file(self):
         self.query("COPY (SELECT 7 AS id) TO 'tidbfs:///output/temp.csv' (FORMAT CSV, USE_TMP_FILE true);")

@@ -126,7 +126,7 @@ existing server-side delayed-publication regression too. Optionally set
 `TIDBFS_QUACK_HEARTBEAT_MS=1000` to test shorter storage sessions on that server;
 native smoke tests retain their own default heartbeat/failure windows.
 
-Public CI runs all 28 analytical fixtures, the existing 14 native compatibility,
+Public CI runs all 29 analytical fixtures, the existing 14 native compatibility,
 cross-route and transient-object cases, and four Quack cases: concurrency,
 conflicts/snapshots, clean handoff/read-only serving, and transient object faults.
 The three crash/partition/ambiguous-write takeover cases require current
@@ -140,7 +140,7 @@ evidence of the newer server-side fencing guarantee.
 
 DuckDB 2.0's asynchronous COPY writers call `AbortFileWrite`. tidbfs discards
 their private local staging instead of publishing incomplete output on close.
-A failed/ambiguous publication also protects that query's destination from
+A write attempt, including a failed open or ambiguous publication, protects that query's destination from
 generic COPY failure cleanup: a loser must not delete a concurrent publisher's
 successful generation. This protection clears at the next query, so ordinary
 overwrite/deletion behavior remains available.
