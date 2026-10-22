@@ -24,10 +24,12 @@ def build_linux(args, version, target, build):
     flags = os.environ.get("CXXFLAGS", "")
     if target.endswith("_gcc4"):
         flags += " -D_GLIBCXX_USE_CXX11_ABI=0"
+    commit = subprocess.check_output([args.duckdb, "-csv", "-noheader", "-c",
+                                      "SELECT source_id FROM pragma_version()"], text=True).strip()
     command = ["cmake", "-S", str(source), "-B", str(cmake_build),
                "-DCMAKE_BUILD_TYPE=Release", "-DBUILD_UNITTESTS=OFF", "-DBUILD_SHELL=OFF",
                "-DSTATICALLY_LINK_EXTENSIONS=core_functions", "-DEXTENSION_STATIC_BUILD=ON",
-               "-DOVERRIDE_GIT_DESCRIBE=" + version + "-0-g0123456789",
+               "-DDUCKDB_EXPLICIT_VERSION=" + version, "-DGIT_COMMIT_HASH=" + commit,
                "-DDUCKDB_EXTENSION_CONFIGS=" + str(ROOT / "extension_config.cmake"),
                "-DCMAKE_CXX_COMPILER=" + os.environ.get("CXX", "c++"),
                "-DCMAKE_CXX_FLAGS=" + flags]
