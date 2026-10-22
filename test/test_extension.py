@@ -3,10 +3,12 @@
 import json
 import base64
 from concurrent.futures import ThreadPoolExecutor
+import faulthandler
 import os
 from pathlib import Path
 import re
 import socket
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -315,9 +317,29 @@ class ExtensionTest(unittest.TestCase):
         script = (f"LOAD {sql_string(EXTENSION)}; "
                   f"CREATE SECRET fs (TYPE tidbfs, ENDPOINT {sql_string(self.fixture.endpoint)}, TOKEN 'fixture-token'); "
                   f"SET tidbfs_read_ahead={prefetch}; SET threads=4; " + sql)
+        if os.environ.get("TIDBFS_TEST_ASYNC_THREADS"):
+            script = f"SET async_threads={int(os.environ['TIDBFS_TEST_ASYNC_THREADS'])}; " + script
         # SQL, including credentials, travels on stdin, never process arguments.
-        result = subprocess.run([DUCKDB, "-unsigned", "-csv", "-noheader", "-bail"],
-                                input=script, text=True, capture_output=True, timeout=45)
+        command = [DUCKDB, "-unsigned", "-csv", "-noheader", "-bail"]
+        with subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, text=True) as child:
+            try:
+                stdout, stderr = child.communicate(script, timeout=45)
+            except subprocess.TimeoutExpired:
+                # Keep the actual timeout as a failure, but capture where the
+                # CLI and fixture were blocked before killing the child.
+                print("Timed-out HTTP requests:", [(r["method"], r["path"]) for r in self.fixture.requests], flush=True)
+                faulthandler.dump_traceback()
+                if os.environ.get("TIDBFS_GDB_ON_TIMEOUT") == "1" and shutil.which("gdb"):
+                    try:
+                        subprocess.run(["sudo", "-n", "gdb", "--batch", "-p", str(child.pid),
+                                        "-ex", "thread apply all bt", "-ex", "detach"], timeout=20, check=False)
+                    except subprocess.TimeoutExpired:
+                        pass
+                child.kill()
+                child.communicate()
+                raise
+        result = subprocess.CompletedProcess(command, child.returncode, stdout, stderr)
         if ok:
             self.assertEqual(result.returncode, 0, result.stderr)
         else:

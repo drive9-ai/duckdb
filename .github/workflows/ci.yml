@@ -15,6 +15,7 @@ jobs:
     env:
       DUCKDB_VERSION: v2.0.0
       DUCKDB_AGENT_MODE: '0'
+      TIDBFS_GDB_ON_TIMEOUT: '1'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
@@ -24,7 +25,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++ cmake libcurl4-openssl-dev unzip
+          sudo apt-get install -y g++ gdb cmake libcurl4-openssl-dev unzip
       - name: Install matching DuckDB CLI and C++ headers
         run: |
           mkdir -p "$RUNNER_TEMP/duckdb/bin" "$RUNNER_TEMP/duckdb/source"
@@ -45,6 +46,8 @@ jobs:
         run: |
           make test
           python3 scripts/install.py --directory "$RUNNER_TEMP/installed-extensions"
+      - name: Stress multipart success and abort with constrained async I/O
+        run: python3 scripts/stress_multipart.py --iterations 30 --async-threads 1
       - name: Prepare existing upstream filesystem and disposable TiDB
         run: |
           python3 -m venv "$RUNNER_TEMP/testenv"
