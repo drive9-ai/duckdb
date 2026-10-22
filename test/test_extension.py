@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import socket
 import shutil
+import signal
 import subprocess
 import tempfile
 import threading
@@ -72,13 +73,16 @@ class Fixture:
 
             def mutate(self):
                 length = int(self.headers.get("Content-Length", "0"))
-                body = self.rfile.read(length)
                 target = urlsplit(self.path)
                 path = unquote(target.path)
                 object_write = path.startswith("/upload-parts/")
-                fixture.requests.append({"method": self.command, "path": path, "object": object_write,
+                self.observation = {"method": self.command, "path": path, "object": object_write,
                                          "authorization": self.headers.get("Authorization"),
-                                         "if_match": self.headers.get("If-Match"), "range": None, "list": False})
+                                         "if_match": self.headers.get("If-Match"), "range": None, "list": False,
+                                         "body_read": False}
+                fixture.requests.append(self.observation)
+                body = self.rfile.read(length)
+                self.observation["body_read"] = True
                 if object_write and self.headers.get("Authorization"):
                     return self.reply(403)
                 if not object_write and self.headers.get("Authorization") != "Bearer fixture-token":
@@ -172,6 +176,9 @@ class Fixture:
                     return self.reply(400)
 
             def reply(self, status, headers=None, body=b"", head=False):
+                observation = getattr(self, "observation", None)
+                if observation is not None:
+                    observation.update(status=status, reply_bytes=0 if head else len(body), reply_sent=False)
                 self.send_response(status)
                 for key, value in (headers or {}).items():
                     self.send_header(key, str(value))
@@ -183,18 +190,22 @@ class Fixture:
                         self.wfile.write(body)
                     except (BrokenPipeError, ConnectionResetError):
                         pass
+                if observation is not None:
+                    observation["reply_sent"] = True
 
             def serve(self, head):
+                self.observation = None
                 target = urlsplit(self.path)
                 if target.path == "/v1/status":
                     return self.reply(200, body=json.dumps({"inline_threshold": fixture.inline_threshold,
                                       "max_upload_bytes": fixture.max_upload_bytes}).encode())
                 object_read = target.path.startswith("/objects/")
                 path = unquote(target.path[len("/objects") if object_read else len("/v1/fs"):])
-                fixture.requests.append({"method": self.command, "path": path, "object": object_read,
+                self.observation = {"method": self.command, "path": path, "object": object_read,
                                          "authorization": self.headers.get("Authorization"),
                                          "if_match": self.headers.get("If-Match"), "range": self.headers.get("Range"),
-                                         "list": bool(target.query)})
+                                         "list": bool(target.query)}
+                fixture.requests.append(self.observation)
                 if object_read and self.headers.get("Authorization"):
                     return self.reply(403)
                 if not object_read and self.headers.get("Authorization") != "Bearer fixture-token":
@@ -321,16 +332,33 @@ class ExtensionTest(unittest.TestCase):
             script = f"SET async_threads={int(os.environ['TIDBFS_TEST_ASYNC_THREADS'])}; " + script
         # SQL, including credentials, travels on stdin, never process arguments.
         command = [DUCKDB, "-unsigned", "-csv", "-noheader", "-bail"]
+        trace_path = None
+        if os.environ.get("TIDBFS_TRACE_HTTP") == "1" and shutil.which("strace"):
+            trace_dir = ROOT / 'build/http-traces'
+            trace_dir.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=trace_dir, prefix=self._testMethodName + '-', delete=False) as trace:
+                trace_path = Path(trace.name)
+            # No payload bytes or headers enter the syscall trace.
+            command = ['strace', '-f', '-tt', '-T', '-s', '0', '-e', 'trace=network,poll,ppoll',
+                       '-o', str(trace_path), '--'] + command
         with subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE, text=True) as child:
+                              stderr=subprocess.PIPE, text=True, start_new_session=bool(trace_path)) as child:
             try:
                 stdout, stderr = child.communicate(script, timeout=45)
             except subprocess.TimeoutExpired:
                 # Keep the actual timeout as a failure, but capture where the
                 # CLI and fixture were blocked before killing the child.
-                print("Timed-out HTTP requests:", [(r["method"], r["path"]) for r in self.fixture.requests], flush=True)
+                keys = ('method', 'path', 'range', 'body_read', 'status', 'reply_bytes', 'reply_sent')
+                print("Timed-out HTTP requests:", [{k: r[k] for k in keys if k in r}
+                                                   for r in self.fixture.requests], flush=True)
                 faulthandler.dump_traceback()
-                if os.environ.get("TIDBFS_GDB_ON_TIMEOUT") == "1" and shutil.which("gdb"):
+                if trace_path:
+                    if shutil.which('ss'):
+                        sockets = subprocess.run(['ss', '-tanp'], capture_output=True, text=True, timeout=10)
+                        print('Fixture TCP sockets:', '\n'.join(line for line in sockets.stdout.splitlines()
+                              if ':' + str(self.fixture.server.server_port) in line), flush=True)
+                    os.killpg(child.pid, signal.SIGKILL)
+                elif os.environ.get("TIDBFS_GDB_ON_TIMEOUT") == "1" and shutil.which("gdb"):
                     try:
                         subprocess.run(["sudo", "-n", "gdb", "--batch", "-p", str(child.pid),
                                         "-ex", "thread apply all bt", "-ex", "detach"], timeout=20, check=False)
@@ -338,6 +366,9 @@ class ExtensionTest(unittest.TestCase):
                         pass
                 child.kill()
                 child.communicate()
+                if trace_path:
+                    print('HTTP syscall trace:', str(trace_path), '\n',
+                          '\n'.join(trace_path.read_text().splitlines()[-240:]), flush=True)
                 raise
         result = subprocess.CompletedProcess(command, child.returncode, stdout, stderr)
         if ok:

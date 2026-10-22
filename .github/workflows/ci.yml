@@ -16,6 +16,7 @@ jobs:
       DUCKDB_VERSION: v2.0.0
       DUCKDB_AGENT_MODE: '0'
       TIDBFS_GDB_ON_TIMEOUT: '1'
+      TIDBFS_TRACE_HTTP: '1'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
@@ -25,7 +26,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++ gdb cmake libcurl4-openssl-dev unzip
+          sudo apt-get install -y g++ gdb strace cmake libcurl4-openssl-dev unzip
       - name: Install matching DuckDB CLI and C++ headers
         run: |
           mkdir -p "$RUNNER_TEMP/duckdb/bin" "$RUNNER_TEMP/duckdb/source"
@@ -98,3 +99,13 @@ jobs:
             QuackTests.test_conflicting_writers_rollback_and_snapshot \
             QuackTests.test_clean_worker_handoff_and_readonly_clients \
             QuackTests.test_transient_object_faults_through_quack
+      - name: Preserve HTTP timeout diagnostics and matching binaries
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: http-timeout-${{ github.run_id }}
+          retention-days: 7
+          path: |
+            build/http-traces/
+            build/tidbfs.duckdb_extension
+            build/libtidbfs_extent.so
