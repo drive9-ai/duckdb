@@ -20,7 +20,8 @@ def main():
         os.environ['TIDBFS_TEST_ASYNC_THREADS'] = str(args.async_threads)
     sys.path.insert(0, str(ROOT / 'test'))
     from test_extension import ExtensionTest
-    names = ('test_failed_multipart_is_aborted', 'test_multipart_copy_and_credential_boundary')
+    names = ('test_failed_multipart_is_aborted', 'test_multipart_copy_and_credential_boundary',
+             'test_concurrent_multipart_copies_with_many_row_groups')
     suite = unittest.TestSuite(ExtensionTest(name) for _ in range(args.iterations) for name in names)
     result = unittest.TextTestRunner(verbosity=1, failfast=True).run(suite)
     if not result.wasSuccessful():

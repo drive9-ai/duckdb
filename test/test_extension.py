@@ -487,6 +487,32 @@ class ExtensionTest(unittest.TestCase):
         out, _ = self.query("SELECT sum(length(payload)) FROM read_parquet('tidbfs:///output/large.parquet');")
         self.assertEqual(out, "9600000")
 
+    def test_concurrent_multipart_copies_with_many_row_groups(self):
+        # Independent CLI processes contend for the same HTTP fixture while
+        # each async writer drains many row groups, rather than one large group.
+        ready = threading.Barrier(4, timeout=15)
+
+        def copy(index):
+            ready.wait()
+            self.query("COPY (SELECT * FROM read_parquet('tidbfs:///data/orders.parquet')) "
+                       f"TO 'tidbfs:///output/concurrent-{index}.parquet' "
+                       "(FORMAT PARQUET, ROW_GROUP_SIZE 2048);")
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            for result in pool.map(copy, range(4)):
+                pass
+        self.assertEqual(len(self.fixture.uploads), 4)
+        self.assertTrue(all(upload.get("complete") for upload in self.fixture.uploads.values()))
+        for index in range(4):
+            out, _ = self.query("SELECT count(*), count(DISTINCT id), min(id), max(id), "
+                                "count(*) FILTER (WHERE bucket != id % 17 OR payload != "
+                                "md5(id::VARCHAR) || md5((id+1)::VARCHAR) || md5((id+2)::VARCHAR)) "
+                                f"FROM read_parquet('tidbfs:///output/concurrent-{index}.parquet');")
+            self.assertEqual(out, "100000,100000,0,99999,0")
+        objects = [r for r in self.fixture.requests if r["object"] and r["method"] == "PUT"]
+        self.assertGreater(len(objects), 4)
+        self.assertTrue(all(r["authorization"] is None and r["if_match"] is None for r in objects))
+
     def test_failed_publication_preserves_destination(self):
         for fault in ("write_fail", "write_conflict"):
             with self.subTest(fault=fault):

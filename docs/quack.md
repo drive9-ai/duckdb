@@ -126,7 +126,7 @@ existing server-side delayed-publication regression too. Optionally set
 `TIDBFS_QUACK_HEARTBEAT_MS=1000` to test shorter storage sessions on that server;
 native smoke tests retain their own default heartbeat/failure windows.
 
-Public CI runs all 29 analytical fixtures, the existing 14 native compatibility,
+Public CI runs all 30 analytical fixtures, the existing 14 native compatibility,
 cross-route and transient-object cases, and four Quack cases: concurrency,
 conflicts/snapshots, clean handoff/read-only serving, and transient object faults.
 The three crash/partition/ambiguous-write takeover cases require current
@@ -135,6 +135,11 @@ extent sessions; it also lacks transactional `session_guard`. Those complete
 recovery cases stay enabled by default and are validated separately against
 the current guarded server with real TiDB/TiKV and RustFS. Public CI is not
 evidence of the newer server-side fencing guarantee.
+
+The multipart stress stage repeats upload success, publication failure/abort,
+and four concurrent CLI writers using many small Parquet row groups. Both
+default async scheduling and a single async thread retain the 45-second
+command deadline and capture thread stacks on timeout.
 
 ## DuckDB 2.0 filesystem adaptation and limits
 
