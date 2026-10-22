@@ -21,7 +21,7 @@ def install(duckdb, directory=None):
     runtime = ROOT / 'build/libtidbfs_extent.so'
     if not extension.is_file() or (platform.system() == 'Linux' and not runtime.is_file()):
         raise RuntimeError('Build the extension and runtime with make build first')
-    settings = f'SET extension_directory={quote(Path(directory).resolve())}; ' if directory else ''
+    settings = f'SET extension_directories=[{quote(Path(directory).resolve())}]; ' if directory else ''
     command = [duckdb, '-unsigned', '-bail', '-csv', '-noheader']
     result = subprocess.run(command, input=settings + f'FORCE INSTALL {quote(extension)}; '
                             "SELECT install_path FROM duckdb_extensions() WHERE extension_name='tidbfs';",
@@ -39,6 +39,6 @@ def install(duckdb, directory=None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--duckdb', default=os.environ.get('DUCKDB', 'duckdb'))
-    parser.add_argument('--directory', help='Override DuckDB extension_directory')
+    parser.add_argument('--directory', help='Use this DuckDB extension installation/search directory')
     args = parser.parse_args()
     install(args.duckdb, args.directory)
