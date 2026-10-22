@@ -496,7 +496,7 @@ class ExtensionTest(unittest.TestCase):
             ready.wait()
             self.query("COPY (SELECT * FROM read_parquet('tidbfs:///data/orders.parquet')) "
                        f"TO 'tidbfs:///output/concurrent-{index}.parquet' "
-                       "(FORMAT PARQUET, ROW_GROUP_SIZE 2048);")
+                       "(FORMAT PARQUET, ROW_GROUP_SIZE 2048, COMPRESSION UNCOMPRESSED);")
 
         with ThreadPoolExecutor(max_workers=4) as pool:
             for result in pool.map(copy, range(4)):
@@ -504,6 +504,8 @@ class ExtensionTest(unittest.TestCase):
         self.assertEqual(len(self.fixture.uploads), 4)
         self.assertTrue(all(upload.get("complete") for upload in self.fixture.uploads.values()))
         for index in range(4):
+            self.assertGreater(len(self.fixture.files[f"/output/concurrent-{index}.parquet"]),
+                               8 * 1024 * 1024, "exercise DuckDB's remote async scheduling threshold")
             out, _ = self.query("SELECT count(*), count(DISTINCT id), min(id), max(id), "
                                 "count(*) FILTER (WHERE bucket != id % 17 OR payload != "
                                 "md5(id::VARCHAR) || md5((id+1)::VARCHAR) || md5((id+2)::VARCHAR)) "

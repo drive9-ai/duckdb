@@ -137,7 +137,8 @@ the current guarded server with real TiDB/TiKV and RustFS. Public CI is not
 evidence of the newer server-side fencing guarantee.
 
 The multipart stress stage repeats upload success, publication failure/abort,
-and four concurrent CLI writers using many small Parquet row groups. Both
+and four concurrent CLI writers using many small Parquet row groups and
+uncompressed outputs above DuckDB's 8 MiB remote async scheduling threshold. Both
 default async scheduling and a single async thread retain the 45-second
 command deadline and capture thread stacks on timeout.
 
