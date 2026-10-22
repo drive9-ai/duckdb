@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run native database tests against disposable TiDB and an updated fs binary.
 
-Requires pymysql, DuckDB 1.4.2, tidb-server and the fs
+Requires pymysql, matching DuckDB/extension binaries, tidb-server and the fs
 server. No existing services, databases or filesystem credentials are used.
 """
 import argparse
@@ -45,10 +45,16 @@ def main():
     parser.add_argument('--fs-server', required=True)
     parser.add_argument('--fs-source', help='Also run relevant Go tests in this fs checkout')
     parser.add_argument('--skip-restart', action='store_true')
+    parser.add_argument('--quack', action='store_true', help='Also run the multi-client Quack integration suite')
+    parser.add_argument('--quack-only', action='store_true', help='Run Quack integration instead of native_smoke.py')
     parser.add_argument('--log-dir', default=str(ROOT / 'build/native-live'))
     parser.add_argument('--rustfs-server', help='Use a disposable RustFS S3 backend and enable object fault tests (requires boto3)')
     parser.add_argument('tests', nargs='*', help='Optional unittest names from native_smoke.py')
     args = parser.parse_args()
+    if (args.quack or args.quack_only) and not args.rustfs_server:
+        parser.error('Quack fault tests require a disposable --rustfs-server')
+    if args.quack and args.quack_only:
+        parser.error('Choose --quack or --quack-only')
     processes, logs, proxies = [], [], []
     log_dir = Path(args.log_dir).resolve()
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -65,7 +71,8 @@ def main():
         try:
             launch([str(Path(args.tidb_server).resolve()), '--store=unistore', '--path=' + tmp + '/tidb',
                     '--host=127.0.0.1', '-P=' + str(sql_port), '--status=' + str(status_port),
-                    '--status-host=127.0.0.1', '-L=error'], 'tidb', dict(os.environ, TZ='UTC'))
+                    '--status-host=127.0.0.1', '--log-slow-query=' + str(log_dir / 'tidb-slow.log'),
+                    '-L=error'], 'tidb', dict(os.environ, TZ='UTC'))
             db = wait(lambda: pymysql.connect(host='127.0.0.1', port=sql_port, user='root'))
             with db.cursor() as cursor:
                 cursor.execute('CREATE DATABASE tidbfs_live')
@@ -74,7 +81,7 @@ def main():
             print('Disposable TiDB ready', flush=True)
             # Never inherit a production DRIVE9 configuration into this harness.
             env = {k: v for k, v in os.environ.items() if not k.startswith('DRIVE9_')}
-            env.update(TZ='UTC', DRIVE9_TENANT_PROVIDER='local',
+            env.update(TZ='UTC', DUCKDB_AGENT_MODE='0', DRIVE9_TENANT_PROVIDER='local',
                        DRIVE9_TENANT_MAINTENANCE_INTERVAL='1s',
                        DRIVE9_LISTEN_ADDR='127.0.0.1:' + str(fs_port),
                        DRIVE9_LOCAL_DSN=f'root@tcp(127.0.0.1:{sql_port})/tidbfs_live?parseTime=true',
@@ -106,6 +113,7 @@ def main():
                            DRIVE9_S3_REGION='us-east-1', DRIVE9_S3_FORCE_PATH_STYLE='true',
                            DRIVE9_S3_ACCESS_KEY_ID=access, DRIVE9_S3_SECRET_ACCESS_KEY=secret,
                            DRIVE9_EXTENT_ALLOW_STATIC_CREDENTIALS='1',
+                           TIDBFS_OBJECT_ENDPOINT=proxy.url,
                            TIDBFS_FAULT_PROXY=proxy.url, TIDBFS_FAULT_TOKEN=proxy.token)
                 print('Disposable RustFS S3 backend ready', flush=True)
             server_command = [str(Path(args.fs_server).resolve())]
@@ -139,8 +147,12 @@ def main():
             env.update(DRIVE9_BASE=endpoint, DRIVE9_API_KEY=token)
             subprocess.run(['go', 'test', '-mod=readonly', '-tags', TAGS, '-count=1', '-v', '.'],
                            cwd=ROOT / 'bridge', env=dict(env, CGO_ENABLED='1'), check=True)
-            subprocess.run(['python3', 'scripts/native_smoke.py'] + args.tests, cwd=ROOT, env=env, check=True)
-            if not args.skip_restart:
+            if not args.quack_only:
+                subprocess.run(['python3', 'scripts/native_smoke.py'] + args.tests, cwd=ROOT, env=env, check=True)
+            if args.quack or args.quack_only:
+                subprocess.run(['python3', 'scripts/quack_smoke.py'] + (args.tests if args.quack_only else []),
+                               cwd=ROOT, env=env, check=True)
+            if not args.skip_restart and not args.quack_only:
                 # Acknowledge a transaction without checkpointing, kill both the
                 # writer and fs server, then restart fs over the same TiDB state.
                 def quote(value):

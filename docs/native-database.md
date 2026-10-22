@@ -1,7 +1,7 @@
 # Native DuckDB over existing extent storage
 
 The extension implements DuckDB's C++ FileSystem interface. Its extent adapter
-links `mem9-ai/drive9` at `d39a6d1b3ba1d3e23fc75b8d530259c861855702`
+links `mem9-ai/drive9` at `67deed055d66`
 through `bridge/main.go`. The bridge is in-process, not a new filesystem server
 or a separately deployed service. Its module pins the same JuiceFS HTTP engine
 fork used by drive9. Build-time Go dependencies are recorded in `bridge/go.sum`.
@@ -151,7 +151,7 @@ set of tables to integrate.
 
 ## Build and live validation
 
-Build with a matching DuckDB 1.4.2 CLI/SDK, C++17, Go >=1.25.1 and libcurl:
+Build with a matching DuckDB 2.0.0 CLI/SDK, C++17, Go >=1.25.1 and libcurl:
 
 ```sh
 make test
@@ -194,7 +194,9 @@ and distinguish client-side rejection from server-side delayed-write protection.
 
 Public GitHub CI builds a pinned public drive9 server and downloads a pinned,
 checksum-verified RustFS release, then runs bridge
-conformance, six native compatibility cases and four transient S3 fault cases.
+conformance, six native compatibility cases, four cross-route locking/session
+regressions and four transient S3 fault cases. Quack concurrency and handoff
+validation is described in [the integration guide](quack.md).
 The full crash, missed-heartbeat and restart suite targets current `tidbcloud/fs`.
 That server repository is private; its newer stale-session scheduling is not
 present in the public upstream server used by CI. These recovery tests remain

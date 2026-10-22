@@ -9,7 +9,7 @@ the build and test scripts.
 
 ## Build and query
 
-The locally verified combination is DuckDB **v1.4.2, macOS arm64**. C++ extensions
+The current target is DuckDB **v2.0.0**, with macOS arm64 and Linux amd64 validation. C++ extensions
 must be built against the exact DuckDB version and platform that loads them.
 Install the DuckDB C++ headers, a C++17 compiler, Go 1.25.1 or newer, and libcurl headers/library.
 The build links the existing drive9 Go extent runtime into the C++ extension.
@@ -179,6 +179,14 @@ locally. This adds neither distributed SQL execution nor concurrent database
 writer processes. Extent performance and failure behavior still require broader
 production validation; it is not a claim of complete DuckDB compatibility.
 
+## Quack SQL clients over shared storage
+
+DuckDB 2.0 workers can serve the attached filesystem database with the official
+Quack extension. Multiple remote clients then execute concurrent transactions
+inside one worker, while tidbfs persists its database and WAL. Replacement
+workers reopen the same shared URI; client SQL sessions are not migrated.
+See [Quack setup, concurrency, failure tests and takeover](docs/quack.md).
+
 ## Read-path optimizations
 
 Existing extent analytical files on either URI use one shared POSIX lock and
@@ -274,8 +282,8 @@ forward filesystem conditional headers to a redirect target. HTTPS is required
 except for same-origin loopback HTTP in local development. Transport errors
 exclude tokens, signed URLs, and response bodies.
 
-Reference: DuckDB's [filesystem interface](https://github.com/duckdb/duckdb/blob/v1.4.2/src/include/duckdb/common/file_system.hpp)
-and [C++ extension entry point](https://github.com/duckdb/duckdb/blob/v1.4.2/src/include/duckdb/main/extension/extension_loader.hpp).
+Reference: DuckDB's [filesystem interface](https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/file_system.hpp)
+and [C++ extension entry point](https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/main/extension/extension_loader.hpp).
 
 ## License
 

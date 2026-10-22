@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build against an installed DuckDB C++ SDK and CLI of the same version."""
+"""Build against a matching DuckDB 2.0 C++ SDK and CLI."""
 
 import argparse
 import hashlib
@@ -24,10 +24,12 @@ def build_linux(args, version, target, build):
     flags = os.environ.get("CXXFLAGS", "")
     if target.endswith("_gcc4"):
         flags += " -D_GLIBCXX_USE_CXX11_ABI=0"
+    commit = subprocess.check_output([args.duckdb, "-csv", "-noheader", "-c",
+                                      "SELECT source_id FROM pragma_version()"], text=True).strip()
     command = ["cmake", "-S", str(source), "-B", str(cmake_build),
                "-DCMAKE_BUILD_TYPE=Release", "-DBUILD_UNITTESTS=OFF", "-DBUILD_SHELL=OFF",
-               "-DDISABLE_BUILTIN_EXTENSIONS=ON", "-DEXTENSION_STATIC_BUILD=ON",
-               "-DOVERRIDE_GIT_DESCRIBE=" + version + "-0-g0123456789",
+               "-DSTATICALLY_LINK_EXTENSIONS=core_functions", "-DEXTENSION_STATIC_BUILD=ON",
+               "-DDUCKDB_EXPLICIT_VERSION=" + version, "-DGIT_COMMIT_HASH=" + commit,
                "-DDUCKDB_EXTENSION_CONFIGS=" + str(ROOT / "extension_config.cmake"),
                "-DCMAKE_CXX_COMPILER=" + os.environ.get("CXX", "c++"),
                "-DCMAKE_CXX_FLAGS=" + flags]
@@ -88,9 +90,9 @@ def main():
     command += [str(ROOT / "src/tidbfs_extension.cpp"), "-o", str(output)]
     command += [str(archive), "-lcurl", "-pthread", "-lresolv", "-framework", "CoreFoundation", "-framework", "Security"]
     subprocess.run(command, check=True)
-    # DuckDB v1.4.x scripts/append_metadata.cmake: 8 reversed 32-byte fields,
+    # DuckDB 2.0 scripts/append_metadata.cmake: 8 reversed 32-byte fields,
     # then 256 bytes reserved for a signature. The local build is unsigned.
-    fields = ["4", target, version, "0.3.0", "CPP", "", "", ""]
+    fields = ["4", target, version, "0.4.0", "CPP", "", "", ""]
     if any(len(field.encode()) > 32 for field in fields):
         raise RuntimeError("DuckDB metadata field exceeds 32 bytes")
     with output.open("ab") as handle:

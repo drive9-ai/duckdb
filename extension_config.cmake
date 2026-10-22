@@ -1,1 +1,1 @@
-duckdb_extension_load(tidbfs SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR} DONT_LINK)
+duckdb_extension_load(tidbfs SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR} EXTENSION_VERSION 0.4.0)
