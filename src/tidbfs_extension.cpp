@@ -570,6 +570,25 @@ struct DeferredWrites : ClientContextState {
 	std::mutex mu;
 	vector<Entry> entries;
 	bool failed = false;
+	std::set<std::tuple<string, string, string>> preserve_on_cleanup;
+	bool preserve_all = false;
+	void QueryBegin(ClientContext &) override {
+		std::lock_guard<std::mutex> lock(mu);
+		preserve_on_cleanup.clear();
+		preserve_all = false;
+	}
+	void Preserve(const Config &config, const string &path) noexcept {
+		std::lock_guard<std::mutex> lock(mu);
+		try {
+			preserve_on_cleanup.emplace(config.endpoint, config.token, NormalizeURI(path));
+		} catch (...) {
+			preserve_all = true;
+		}
+	}
+	bool PreserveOnCleanup(const Config &config, const string &path) {
+		std::lock_guard<std::mutex> lock(mu);
+		return preserve_all || preserve_on_cleanup.count({config.endpoint, config.token, NormalizeURI(path)});
+	}
 	void Add(Config config, string path, unique_ptr<Spool> spool, idx_t size, int64_t revision) noexcept {
 		std::lock_guard<std::mutex> lock(mu);
 		try {
@@ -595,7 +614,12 @@ struct DeferredWrites : ClientContextState {
 		}
 		HTTP http;
 		for (auto &entry : pending) {
-			Publish(http, entry.config, entry.path, *entry.spool, entry.size, entry.revision);
+			try {
+				Publish(http, entry.config, entry.path, *entry.spool, entry.size, entry.revision);
+			} catch (...) {
+				Preserve(entry.config, entry.path);
+				throw;
+			}
 		}
 	}
 };
@@ -637,6 +661,7 @@ struct TiDBHandle : FileHandle {
 			dirty = false;
 		} catch (...) {
 			failed = true; // Do not silently retry an ambiguous publication on Close.
+			deferred->Preserve(config, path);
 			throw;
 		}
 	}
@@ -930,6 +955,18 @@ public:
 		std::lock_guard<std::mutex> lock(h.mu);
 		h.Sync();
 	}
+	void AbortFileWrite(FileHandle &base) override {
+		auto &h = base.Cast<TiDBHandle>();
+		std::lock_guard<std::mutex> lock(h.mu);
+		// DuckDB 2.0 aborts asynchronous writers through this hook. Close would
+		// publish partial staging, and generic COPY cleanup could then delete
+		// an unrelated winner after a revision conflict or lost acknowledgement.
+		h.deferred->Preserve(h.config, h.path);
+		h.failed = true;
+		h.closed = true;
+		h.dirty = false;
+		h.spool.reset();
+	}
 	void Truncate(FileHandle &base, int64_t size) override {
 		auto &h = base.Cast<TiDBHandle>();
 		std::lock_guard<std::mutex> lock(h.mu);
@@ -1055,6 +1092,12 @@ public:
 	}
 	bool TryRemoveFile(const string &path, optional_ptr<FileOpener> opener) override {
 		auto config = ReadConfig(opener, path);
+		if (auto context = FileOpener::TryGetClientContext(opener)) {
+			auto writes = context->registered_state->Get<DeferredWrites>("tidbfs.pending_writes");
+			if (writes && writes->PreserveOnCleanup(config, path)) {
+				return false;
+			}
+		}
 		HTTP http;
 		auto r = http.Request(config.endpoint + "/v1/fs" + EncodePath(Path(path)) + "?kind=file", config.token,
 		                      false, {}, 65536, "DELETE");

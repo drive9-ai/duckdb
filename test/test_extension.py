@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
 import re
+import socket
 import subprocess
 import tempfile
 import threading
@@ -137,6 +138,10 @@ class Fixture:
                             return self.reply(400)
                         fixture.files[path] = body
                         fixture.revisions[path] = current + 1
+                        if fixture.fault == "write_drop_ack":
+                            self.connection.shutdown(socket.SHUT_RDWR)
+                            self.close_connection = True
+                            return
                         return self.reply(200, body=json.dumps({"revision": current + 1}).encode())
                     if self.command == "DELETE":
                         if target.query == "recursive":
@@ -440,6 +445,8 @@ class ExtensionTest(unittest.TestCase):
         self.assertEqual(sum(r.returncode == 0 for r in results), 1)
         self.assertTrue(any("write conflict" in r.stderr for r in results))
         self.assertIn(self.fixture.files["/output/race.csv"], (b"id\n1\n", b"id\n2\n"))
+        self.assertFalse(any(r["method"] == "DELETE" for r in self.fixture.requests),
+                         "a failed COPY must not delete the concurrent publisher's file")
 
     def test_multipart_copy_and_credential_boundary(self):
         self.query("COPY (SELECT * FROM read_parquet('tidbfs:///data/orders.parquet')) "
@@ -481,6 +488,42 @@ class ExtensionTest(unittest.TestCase):
         self.query("COPY (SELECT CASE WHEN i = 99999 THEN error('stop') ELSE i END AS id "
                    "FROM range(100000) t(i)) TO 'tidbfs:///output/failed.csv' (FORMAT CSV);", ok=False)
         self.assertNotIn("/output/failed.csv", self.fixture.files)
+        self.assertFalse(any(r["method"] == "PUT" for r in self.fixture.requests),
+                         "aborting an asynchronous writer must discard its private staging")
+
+    def test_failed_copy_preserves_existing_output(self):
+        for compression in ("UNCOMPRESSED", "GZIP"):
+            with self.subTest(compression=compression):
+                original = self.fixture.files["/data/items.csv"]
+                self.fixture.requests.clear()
+                self.query("COPY (SELECT CASE WHEN i = 99999 THEN error('stop') ELSE i END AS id "
+                           "FROM range(100000) t(i)) TO 'tidbfs:///data/items.csv' "
+                           f"(FORMAT CSV, COMPRESSION {compression});", ok=False)
+                self.assertEqual(self.fixture.files["/data/items.csv"], original)
+                self.assertFalse(any(r["method"] in ("PUT", "DELETE") for r in self.fixture.requests))
+
+    def test_failed_copy_cleanup_guard_expires_before_next_query(self):
+        self.fixture.files["/dataset/old.csv"] = b"id\n7\n"
+        script = (f"LOAD {sql_string(EXTENSION)}; CREATE SECRET fs (TYPE tidbfs, "
+                  f"ENDPOINT {sql_string(self.fixture.endpoint)}, TOKEN 'fixture-token');\n"
+                  "COPY (SELECT error('expected abort') AS id) TO 'tidbfs:///dataset/old.csv' (FORMAT CSV);\n"
+                  "COPY (SELECT 1 AS id, 42 AS value) TO 'tidbfs:///dataset' (FORMAT CSV, PARTITION_BY(id), OVERWRITE);\n"
+                  "SELECT count(*) FROM read_csv('tidbfs:///dataset/**/*.csv', hive_partitioning=true);\n")
+        result = subprocess.run([DUCKDB, "-unsigned", "-csv", "-noheader"],
+                                input=script, text=True, capture_output=True, timeout=45)
+        self.assertIn("expected abort", result.stderr)
+        self.assertNotIn("/dataset/old.csv", list(self.fixture.files))
+        self.assertTrue(result.stdout.strip().endswith("1"), result.stdout + result.stderr)
+
+    def test_lost_publication_ack_preserves_committed_generation(self):
+        self.fixture.fault = "write_drop_ack"
+        _, error = self.query("COPY (SELECT 42 AS id) TO 'tidbfs:///output/uncertain.csv' (FORMAT CSV);", ok=False)
+        self.assertIn("transport", error)
+        self.assertEqual(self.fixture.files.get("/output/uncertain.csv"), b"id\n42\n")
+        self.assertEqual(sum(r["method"] == "PUT" for r in self.fixture.requests), 1)
+        self.assertFalse(any(r["method"] == "DELETE" for r in self.fixture.requests))
+        out, _ = self.query("SELECT id FROM read_csv('tidbfs:///output/uncertain.csv');")
+        self.assertEqual(out, "42")
 
     def test_temporary_output_and_empty_file(self):
         self.query("COPY (SELECT 7 AS id) TO 'tidbfs:///output/temp.csv' (FORMAT CSV, USE_TMP_FILE true);")

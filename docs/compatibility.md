@@ -1,7 +1,7 @@
 # DuckDB compatibility
 
 SQL, catalog, WAL, recovery and transaction execution remain inside unmodified
-DuckDB 1.4.2. This is an experimental filesystem integration, not a complete
+DuckDB 2.0.0. This is an experimental filesystem integration, not a complete
 DuckDB or POSIX compatibility claim.
 
 | Workflow | `tidbfs:///` | `tidbfs+db:///` |
@@ -15,10 +15,11 @@ DuckDB or POSIX compatibility claim.
 | Remote spill files | Whole-generation ordinary output | Extent random I/O and DuckDB cleanup |
 | Metadata/listing through `/v1/fs` | Yes | Yes, same paths and namespace |
 | Additional server tables/endpoints | None | None |
+| Quack multi-client SQL and transactions | Filesystem data is read by the worker | Multiple clients through one database worker; [integration guide](quack.md) |
 
 ## Verification
 
-`make test` builds and loads the extension and runs 25 analytical CLI fixtures.
+`make test` builds and loads the extension and runs 28 analytical CLI fixtures.
 `scripts/test_native_live.py` runs bridge conformance, native DuckDB tests and
 client/server restart checks against disposable TiDB and filesystem services.
 See [the native adapter](native-database.md) for the exact failure scenarios.
@@ -29,6 +30,8 @@ regressions and four transient S3 fault cases
 on the public upstream server and disposable RustFS;
 the complete recovery suite runs against current `tidbcloud/fs`, whose checkout
 is private. The harness defaults to the complete suite, including failure tests.
+`--quack` adds the separate-process concurrency, conflict, snapshot, crash,
+partition, ambiguous-write and worker-handoff suite described in [Quack](quack.md).
 
 ## Boundaries
 
