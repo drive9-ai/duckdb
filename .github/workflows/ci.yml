@@ -46,8 +46,10 @@ jobs:
         run: |
           make test
           python3 scripts/install.py --directory "$RUNNER_TEMP/installed-extensions"
-      - name: Stress multipart success and abort with constrained async I/O
-        run: python3 scripts/stress_multipart.py --iterations 30 --async-threads 1
+      - name: Stress multipart success and abort with default and constrained async I/O
+        run: |
+          python3 scripts/stress_multipart.py --iterations 30
+          python3 scripts/stress_multipart.py --iterations 30 --async-threads 1
       - name: Prepare existing upstream filesystem and disposable TiDB
         run: |
           python3 -m venv "$RUNNER_TEMP/testenv"
