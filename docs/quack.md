@@ -151,6 +151,15 @@ generic COPY failure cleanup: a loser must not delete a concurrent publisher's
 successful generation. This protection clears at the next query, so ordinary
 overwrite/deletion behavior remains available.
 
+Analytical HTTP range reads use a 64 KiB libcurl receive buffer. On the tested
+Linux large-MSS loopback link, the default 16 KiB batches led to a 2 KiB
+advertised receive window and roughly 200 ms probe cycles. Input reads then
+exceeded the CLI deadline before multipart publication began. A same-runner
+[16/64/16 KiB control](https://github.com/siddontang/duckdb-tidbfs/actions/runs/39842371234)
+reproduced timeout/pass/timeout with the same binary. The concurrent multipart
+regression checks complete row contents; the 45-second command deadline stays
+in place, and normal CI runs without syscall tracing.
+
 The native adapter retains its existing sync-per-write policy and in-process
 JSON/base64 bridge. This work does not add an asynchronous extent transport or
 claim a performance improvement. Native databases remain experimental, with

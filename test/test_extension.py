@@ -189,7 +189,7 @@ class Fixture:
                     try:
                         self.wfile.write(body)
                     except (BrokenPipeError, ConnectionResetError):
-                        pass
+                        return
                 if observation is not None:
                     observation["reply_sent"] = True
 
@@ -339,7 +339,8 @@ class ExtensionTest(unittest.TestCase):
             with tempfile.NamedTemporaryFile(dir=trace_dir, prefix=self._testMethodName + '-', delete=False) as trace:
                 trace_path = Path(trace.name)
             # No payload bytes or headers enter the syscall trace.
-            command = ['strace', '-f', '-tt', '-T', '-s', '0', '-e', 'trace=network,poll,ppoll',
+            command = ['strace', '-f', '-tt', '-T', '-s', '32', '-e', 'trace=network,poll,ppoll',
+                       '-e', 'raw=sendto,recvfrom,sendmsg,recvmsg,sendmmsg,recvmmsg',
                        '-o', str(trace_path), '--'] + command
         with subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, text=True, start_new_session=bool(trace_path)) as child:
@@ -354,9 +355,14 @@ class ExtensionTest(unittest.TestCase):
                 faulthandler.dump_traceback()
                 if trace_path:
                     if shutil.which('ss'):
-                        sockets = subprocess.run(['ss', '-tanp'], capture_output=True, text=True, timeout=10)
-                        print('Fixture TCP sockets:', '\n'.join(line for line in sockets.stdout.splitlines()
-                              if ':' + str(self.fixture.server.server_port) in line), flush=True)
+                        sockets = subprocess.run(['ss', '-tainp'], capture_output=True, text=True, timeout=10)
+                        lines = sockets.stdout.splitlines()
+                        selected = set()
+                        for i, line in enumerate(lines):
+                            if ':' + str(self.fixture.server.server_port) in line:
+                                selected.update((i, i+1))
+                        print('Fixture TCP sockets:', '\n'.join(line for i, line in enumerate(lines)
+                              if i in selected), flush=True)
                     os.killpg(child.pid, signal.SIGKILL)
                 elif os.environ.get("TIDBFS_GDB_ON_TIMEOUT") == "1" and shutil.which("gdb"):
                     try:

@@ -16,7 +16,6 @@ jobs:
       DUCKDB_VERSION: v2.0.0
       DUCKDB_AGENT_MODE: '0'
       TIDBFS_GDB_ON_TIMEOUT: '1'
-      TIDBFS_TRACE_HTTP: '1'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5

@@ -285,6 +285,9 @@ public:
 		UploadSource source {fd, offset, length};
 		response.limit = MaxValue<idx_t>(limit, 65536); // bounded redirect/error bodies
 		curl_easy_reset(curl); // preserves this handle's connection pool
+		// Drain whole large-MSS loopback packets. Smaller receive batches can
+		// collapse Linux's advertised window and leave range reads probing slowly.
+		curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, 65536L);
 		curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
 		curl_easy_setopt(curl, CURLOPT_NOBODY, head ? 1L : 0L);
 		curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
