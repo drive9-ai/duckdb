@@ -199,6 +199,46 @@ class QuackTests(unittest.TestCase):
         self.serve(new, 'worker-B')
         return new
 
+    def test_parallel_buffer_limited_scans_and_writes(self):
+        worker = self.worker()
+        # 128 MiB of uncompressed columns exceeds the 64 MiB DuckDB buffer
+        # pool. Every reader uses the same native database file handle.
+        worker.execute("SET force_compression='uncompressed'; SET memory_limit='128MB'; "
+            "CREATE TABLE scan_data AS SELECT i::BIGINT id, hash(i) a, hash(i+1) b, hash(i+2) c "
+            "FROM range(4194304) t(i); CREATE TABLE commits(i INTEGER); CHECKPOINT shared;",
+            timeout=300)
+        scan = 'SELECT sum(id), bit_xor(a), bit_xor(b), bit_xor(c) FROM scan_data'
+        expected = worker.execute(scan)
+        worker.execute("SET memory_limit='64MB';")
+        readers = [self.client() for _ in range(4)]
+        writer = self.client()
+        gate = threading.Barrier(5, timeout=60)
+
+        def read(client):
+            gate.wait()
+            for _ in range(6):
+                self.assertEqual(client.execute(scan, timeout=180), expected)
+
+        def write():
+            gate.wait()
+            for i in range(12):
+                writer.execute(f'INSERT INTO commits VALUES ({i});')
+
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            tasks = [pool.submit(read, client) for client in readers] + [pool.submit(write)]
+            for task in tasks:
+                task.result(timeout=300)
+        self.assertEqual(writer.execute('SELECT count(*), sum(i) FROM commits;'), ['12,66'])
+        # Closing the old worker must release all handles after concurrent
+        # scans. Reopen, checkpoint and shrink a table to exercise mutations.
+        for client in readers + [writer]:
+            client.close()
+        replacement = self.replacement(worker)
+        self.assertEqual(replacement.execute(scan), expected)
+        replacement.execute('DELETE FROM scan_data WHERE id >= 1024; CHECKPOINT shared;')
+        observer = self.client()
+        self.assertEqual(observer.execute('SELECT count(*), sum(id) FROM scan_data;'), ['1024,523776'])
+
     def test_concurrent_clients_commit_and_read(self):
         worker = self.worker()
         self.seed(worker, 0)
