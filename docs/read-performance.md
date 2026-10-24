@@ -22,6 +22,67 @@ underlying VFS read still takes O(B). Concurrent positional reads can overlap,
 subject to the existing VFS reader, object store, and metadata behavior. The
 session guard still excludes mutations across that session.
 
+## Measured comparison — 2026-10-24
+
+The eight-client buffer-limited scan improves from **1.41 to 14.88 SQL/s
+(10.5×)**; client p95 falls from **8.96 s to 1.14 s**. The same-run local-file
+reference reaches 65.77 SQL/s, so a substantial storage-path gap remains.
+Worker CPU utilization rises from 1.10 to 3.20 cores, consistent with removing
+the serial read bottleneck. A single client reaches 16.93 SQL/s versus the
+previous plugin's 1.49 SQL/s. This measures the combined binary-transfer and
+shared-guard change; it does not isolate each contribution.
+
+Throughput is the median of three qualifying trials, in SQL statements/s.
+For write workloads, each statement is one durable transaction. A 128-row
+transaction therefore represents 128 times that many inserted rows.
+
+| Workload (8 clients) | Local file | Previous tidbfs | Optimized tidbfs |
+|---|---:|---:|---:|
+| Buffer-limited full scan | 65.77 | 1.41 | 14.88 |
+| Mostly cached range aggregate | 2301.18 | 2060.56 | 2197.10 |
+| 1-row durable transaction | 1220.25 | 19.86 | 21.14 |
+| 128-row durable transaction | 710.08 | 16.81 | 18.12 |
+| 90% reads / 10% writes | 1698.70 | 186.45 | 203.45 |
+
+Small differences in the mostly cached, write and mixed workloads should not
+be treated as established gains or regressions from these short trials.
+The 128-row write's pooled p95 is 0.92 s before and 1.14 s after; individual
+trial p95 ranges overlap (0.75–1.29 s before, 0.94–1.20 s after). There is no
+write-tail improvement demonstrated here. The existing S3-plus-metadata
+persistence barrier is preserved.
+
+![Throughput comparison](benchmarks/2026-10-24-extent-reads/qps.png)
+
+![Client p95 comparison](benchmarks/2026-10-24-extent-reads/p95_ms.png)
+
+[All configurations, latency quantiles and CPU measurements (CSV)](benchmarks/2026-10-24-extent-reads/summary.csv) ·
+[Binary hashes, build metadata, method and excluded groups (JSON)](benchmarks/2026-10-24-extent-reads/results.json)
+
+The run uses DuckDB 2.0.0 (`d54cbbe3df`), official Quack `f96420ed46`, the same
+pinned public extent SDK and Go 1.26.0 for both macOS plugin artifacts, real
+TiDB/TiKV 8.5.3 with one TiKV, and RustFS 1.0.3. All services use loopback on
+an Apple M4 with 10 logical CPUs and 24 GiB memory. Production sources are
+committed as `c635e86`; the baseline is the previously validated main artifact.
+The JSON records the exact scored hashes and the embedded parent-revision
+build metadata (the binaries were compiled before committing their changes).
+
+There are 234 recorded runs, including resource-driven repeats. Select 207
+runs in 69 complete three-backend groups; exclude five groups for paging and
+retain all original samples. Every selected configuration has three trials.
+Throughput shading shows the trial minimum/maximum; p95 pools successful
+request latencies. Baseline full-scan sample counts are small, so their p99 is
+exploratory. Host load varies between trials; loopback results are not a
+production capacity estimate.
+
+Matrix warm-up scans `a,b,c` and then issues three requests per client. Early
+range queries may still fault in `id` blocks; this is a mostly cached workload,
+rather than a guarantee that every requested block starts resident. The
+buffer-limited scan reads three columns from a nominal 128 MiB table with a
+64 MB DuckDB buffer pool; OS and object caches are not purged. The worker is
+configured with `threads=4`; clients still contend for worker/cache resources.
+Startup, attach and checkpoints run outside timing, including the additional
+attribute refresh on locked opens. See the reproduction details below.
+
 ## Reproduce the benchmark
 
 Use matching DuckDB 2.0 CLI, Python package and official Quack binaries. Install
