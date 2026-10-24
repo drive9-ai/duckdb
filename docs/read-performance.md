@@ -17,7 +17,7 @@ cannot acknowledge data. Existing filesystem sessions and advisory locks are
 unchanged. No new server endpoint, metadata table, or Quack dependency is added.
 
 The old bridge performed O(B) JSON/Base64 serialization, parsing, decoding and
-payload copies for B bytes. The new bridge passes O(1) buffer metadata; the
+payload copies for B bytes. The new bridge passes O(1) buffer metadata per ABI call; the
 underlying VFS read still takes O(B). Concurrent positional reads can overlap,
 subject to the existing VFS reader, object store, and metadata behavior. The
 session guard still excludes mutations across that session.

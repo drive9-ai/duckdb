@@ -226,7 +226,9 @@ func TestLiveBinaryReadAcrossChunkBoundaries(t *testing.T) {
 	call(request{Op: "close", Handle: h})
 	h = call(request{Op: "open", Path: path})["handle"].(uint64)
 	for _, off := range []uint64{chunk - maxRead/2, chunk + maxRead - 16, 2*chunk - 16, 2*chunk + maxRead - 16} {
-		buffer := make([]byte, maxRead)
+		// Direct reads borrow reused DuckDB pages; hole bytes must be zeroed
+		// by VFS, without relying on Go's old zero-initialized staging buffer.
+		buffer := bytes.Repeat([]byte{0xcc}, maxRead)
 		n, err := readBuffer(sid, h, unsafe.Pointer(&buffer[0]), maxRead, off)
 		wantLength := int(min(uint64(maxRead), 2*chunk+maxRead-off))
 		if err != nil || n != wantLength {
