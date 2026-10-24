@@ -368,6 +368,18 @@ func (s *session) call(r request) (map[string]any, error) {
 			if eno = v.Setlk(ctx, e.Inode, fh, fh, 0, math.MaxInt64, typ, uint32(os.Getpid()), false); eno != 0 {
 				return nil, fmt.Errorf("file is locked: %w", eno)
 			}
+			// A failed lock attempt can warm the SDK's one-second open cache
+			// before the previous owner checkpoints or changes the file. Once
+			// ownership is acquired, discard that snapshot and update VFS reader
+			// lengths from authoritative attributes (including same-size edits).
+			if eno = v.Meta.InvalidateChunkCache(ctx, e.Inode, math.MaxUint32); eno != 0 {
+				return nil, eno
+			}
+			fresh, eno := v.GetAttr(ctx, e.Inode, 0)
+			if eno != 0 {
+				return nil, eno
+			}
+			e = fresh
 		}
 		if r.Truncate {
 			if !r.Write {

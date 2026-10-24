@@ -81,3 +81,19 @@ than the buffer pool from four clients while another client commits, then
 handoff, reopen, checkpoint and modify it. Existing native, cross-URI pinning,
 truncated-download, crash/WAL recovery and worker takeover tests also exercise
 the new read entry point.
+
+## Lock handoff and test transport
+
+A failed database open can cache the previous owner's file length before its
+final checkpoint grows the database. Locked opens now invalidate the existing
+SDK chunk/attribute cache and refresh the VFS reader length after acquiring the
+lock. The lock handoff regression covers growth, shrinkage, and rewritten tail
+bytes; the Quack regression reads and modifies checkpointed data after takeover.
+This uses the existing metadata and locking interfaces.
+
+The disposable S3 fault relay now has a 256-connection listening queue to
+accommodate the existing client's 200-download limit. Its previous queue of
+five could reset healthy download bursts before request logging, independent
+of the plugin's read optimization. A gated accept-loop regression reproduces
+the resets with the old queue and passes with the new one. Benchmarks connect
+directly to RustFS and do not use this relay.

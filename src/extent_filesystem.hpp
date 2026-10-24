@@ -205,8 +205,12 @@ class TiDBDatabaseFileSystem : public FileSystem {
 	void Read(FileHandle &base, void *buffer, int64_t count, idx_t offset) override {
 		auto &h = base.Cast<ExtentHandle>();
 		std::shared_lock<std::shared_mutex> lock(h.mu);
-		if (count < 0 || h.ReadAt(buffer, idx_t(count), offset) != idx_t(count))
-			throw IOException("Short extent read");
+		if (count < 0)
+			throw IOException("Negative read size");
+		auto received = h.ReadAt(buffer, idx_t(count), offset);
+		if (received != idx_t(count))
+			throw IOException("Short extent read from %s at %llu: expected %lld bytes, received %llu",
+			                  h.path, offset, count, received);
 	}
 	int64_t Read(FileHandle &base, void *buffer, int64_t count) override {
 		auto &h = base.Cast<ExtentHandle>();

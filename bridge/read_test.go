@@ -245,3 +245,39 @@ func TestLiveBinaryReadAcrossChunkBoundaries(t *testing.T) {
 	}
 	call(request{Op: "close", Handle: h})
 }
+
+func TestLiveLockedOpenRefreshesAfterAnotherWriter(t *testing.T) {
+	a, b := liveReadSession(t), liveReadSession(t)
+	call := func(sid uint64, r request) map[string]any {
+		t.Helper()
+		r.Session = sid
+		out, err := dispatch(r)
+		if err != nil {
+			t.Fatalf("%s: %v", r.Op, err)
+		}
+		return out
+	}
+	path := fmt.Sprintf("/lock-refresh-%d", time.Now().UnixNano())
+	// Multiple quick handoffs also cover the SDK's coarse one-second cache
+	// expiry boundary. No sleep is used to wait for that cache to expire.
+	for _, size := range []uint64{8 << 20, 4, 8 << 20, 4} {
+		owner := call(a, request{Op: "open", Path: path, Create: true, Write: true, Lock: "write"})["handle"].(uint64)
+		if _, err := dispatch(request{Op: "open", Session: b, Path: path, Write: true, Lock: "write"}); err == nil {
+			t.Fatal("contender acquired an active writer's lock")
+		}
+		call(a, request{Op: "truncate", Handle: owner, Offset: size})
+		call(a, request{Op: "write", Handle: owner, Offset: size - 4, Data: []byte{0, 255, 37, 128}})
+		call(a, request{Op: "close", Handle: owner})
+		opened := call(b, request{Op: "open", Path: path, Lock: "read"})
+		h := opened["handle"].(uint64)
+		if opened["size"].(uint64) != size {
+			t.Fatalf("locked open reused old size: got %v want %d", opened["size"], size)
+		}
+		buffer := make([]byte, 4)
+		n, err := readBuffer(b, h, unsafe.Pointer(&buffer[0]), 4, size-4)
+		if err != nil || n != 4 || !bytes.Equal(buffer, []byte{0, 255, 37, 128}) {
+			t.Fatalf("locked open reused an old reader: n=%d data=%v err=%v", n, buffer, err)
+		}
+		call(b, request{Op: "close", Handle: h})
+	}
+}
