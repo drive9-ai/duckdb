@@ -30,6 +30,7 @@ DUCKDB = os.environ.get('DUCKDB', 'duckdb')
 ENDPOINT = os.environ['DRIVE9_BASE']
 FS_TOKEN = os.environ['DRIVE9_API_KEY']
 QUACK = os.environ.get('TIDBFS_QUACK_EXTENSION', 'quack')
+EXTENSION = Path(os.environ.get('TIDBFS_TEST_EXTENSION', ROOT / 'build/tidbfs.duckdb_extension')).resolve()
 HEARTBEAT = int(os.environ.get('TIDBFS_QUACK_HEARTBEAT_MS', '12000'))
 
 
@@ -111,6 +112,9 @@ class CLI:
         for stream in (self.process.stdin, self.process.stdout, self.log):
             if stream and not stream.closed:
                 stream.close()
+        if os.environ.get('TIDBFS_TEST_LOG_DIR') and self.log_path.exists():
+            destination = Path(os.environ['TIDBFS_TEST_LOG_DIR']) / self.log_path.name
+            destination.write_text(self.redact(self.log_path.read_text()))
 
     def kill(self):
         self.process.kill()
@@ -134,7 +138,7 @@ class QuackTests(unittest.TestCase):
 
     def prepare_worker(self, *, endpoint=ENDPOINT, name='worker'):
         worker = self.cli(name)
-        worker.execute(f"LOAD {quote(ROOT / 'build/tidbfs.duckdb_extension')}; LOAD {quote(QUACK)}; "
+        worker.execute(f"LOAD {quote(EXTENSION)}; LOAD {quote(QUACK)}; "
             f"CREATE SECRET fs (TYPE tidbfs, ENDPOINT {quote(endpoint)}, TOKEN {quote(FS_TOKEN)}); "
             f"SET GLOBAL tidbfs_heartbeat_ms={HEARTBEAT}; SET threads=4; "
             "SET checkpoint_threshold='1GB';")
@@ -235,9 +239,10 @@ class QuackTests(unittest.TestCase):
             client.close()
         replacement = self.replacement(worker)
         self.assertEqual(replacement.execute(scan), expected)
-        replacement.execute('DELETE FROM scan_data WHERE id >= 1024; CHECKPOINT shared;')
+        replacement.execute('DELETE FROM commits WHERE i >= 3; CHECKPOINT shared;')
         observer = self.client()
-        self.assertEqual(observer.execute('SELECT count(*), sum(id) FROM scan_data;'), ['1024,523776'])
+        self.assertEqual(observer.execute('SELECT count(*), sum(i) FROM commits;'), ['3,3'])
+        self.assertEqual(observer.execute(scan), expected)
 
     def test_concurrent_clients_commit_and_read(self):
         worker = self.worker()

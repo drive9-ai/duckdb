@@ -37,7 +37,7 @@ python scripts/benchmark_quack.py \
   --duckdb /path/to/duckdb \
   --quack-extension /path/to/quack.duckdb_extension \
   --extension build/tidbfs.duckdb_extension \
-  --baseline-extension /path/to/baseline.duckdb_extension \
+  --baseline-extension /path/to/baseline/tidbfs.duckdb_extension \
   --tidb-server /path/to/tidb-server-or-isolated-wrapper \
   --fs-server /path/to/drive9-server \
   --rustfs-server /path/to/rustfs \
@@ -47,7 +47,8 @@ python scripts/benchmark_quack.py \
 
 Repeat with `--mode stream --rows 4194304 --workloads read_stream
 --clients 1,4,8 --duration 10` to exceed the worker's 64 MB buffer pool. Omit
-`--baseline-extension` for a two-backend comparison. On Linux, keep each plugin
+`--baseline-extension` for a two-backend comparison. Keep the basename
+`tidbfs.duckdb_extension` so DuckDB resolves its entry point. On Linux, keep each plugin
 beside its matching `libtidbfs_extent.so`.
 
 Each Python client has its own in-memory DuckDB instance and Quack session;

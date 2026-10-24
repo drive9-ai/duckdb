@@ -5,6 +5,7 @@ Requires pymysql, matching DuckDB/extension binaries, tidb-server and the fs
 server. No existing services, databases or filesystem credentials are used.
 """
 import argparse
+from collections import Counter
 import json
 import os
 from pathlib import Path
@@ -146,7 +147,7 @@ def main():
                                     'TestExtent|TestFileRead|TestStatForRead|TestReadPlan|TestAppendLog|Test.*IfRevision|Test.*RevisionCAS|TestSharedTiDBSchemaStatementsContainsAllTables|TestCurrentSharedTiDBSchemaVersionIsDerivedFromSharedStatements|Test.*DumpInitSQL'],
                                    cwd=args.fs_source, env=test_env, stdout=output, stderr=output, check=True)
                 print('Go storage, isolation, protocol, range and schema regressions passed', flush=True)
-            env.update(DRIVE9_BASE=endpoint, DRIVE9_API_KEY=token)
+            env.update(DRIVE9_BASE=endpoint, DRIVE9_API_KEY=token, TIDBFS_TEST_LOG_DIR=str(log_dir))
             subprocess.run(['go', 'test', '-race', '-mod=readonly', '-tags', TAGS, '-count=1', '-v', '.'],
                            cwd=ROOT / 'bridge', env=dict(env, CGO_ENABLED='1'), check=True)
             if not args.quack_only:
@@ -199,6 +200,14 @@ def main():
                 wait(recover, timeout=150)
                 print('Client + fs SIGKILL, server restart and WAL recovery passed', flush=True)
         finally:
+            # Keep credential-free fault summaries even when a test fails.
+            for index, proxy in enumerate(proxies):
+                with proxy.mu:
+                    counts = Counter((event.get('method'), event.get('op'), event.get('status'),
+                                      event.get('fault')) for event in proxy.events)
+                (log_dir / f'proxy-{index}-summary.json').write_text(json.dumps([
+                    {'method': key[0], 'op': key[1], 'status': key[2], 'fault': key[3], 'count': count}
+                    for key, count in counts.items()], indent=2) + '\n')
             for child in reversed(processes):
                 if child.poll() is None:
                     child.terminate()

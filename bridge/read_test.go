@@ -103,6 +103,21 @@ func TestReadFailsClosedBeforeAndAfterIO(t *testing.T) {
 	}
 }
 
+func TestReadGuardPreservesIOErrorAndRejectsDisconnectedCalls(t *testing.T) {
+	s := &session{files: map[uint64]handle{1: {fh: 1}}}
+	if n, err := s.withReadHandle(1, func(handle) (int, error) { return 7, syscall.EIO }); n != 0 || !errors.Is(err, syscall.EIO) {
+		t.Fatalf("acknowledged a partial failed read: n=%d err=%v", n, err)
+	}
+	// A request can find the session in the registry immediately before
+	// disconnect removes it. Retaining the pointer must not retain access.
+	s.mu.Lock()
+	s.closed = true
+	s.mu.Unlock()
+	if _, err := s.call(request{Op: "stat", Path: "/"}); !errors.Is(err, syscall.EBADF) {
+		t.Fatalf("a delayed call accessed the disconnected runtime: %v", err)
+	}
+}
+
 func liveReadSession(t *testing.T) uint64 {
 	t.Helper()
 	endpoint, token := os.Getenv("DRIVE9_BASE"), os.Getenv("DRIVE9_API_KEY")
@@ -187,4 +202,46 @@ func TestLiveBinaryReadRangesAndConcurrentClose(t *testing.T) {
 	if _, err := readBuffer(sid, h, nil, 0, 0); !errors.Is(err, syscall.EBADF) {
 		t.Fatalf("closed handle still readable: %v", err)
 	}
+}
+
+func TestLiveBinaryReadAcrossChunkBoundaries(t *testing.T) {
+	sid := liveReadSession(t)
+	call := func(r request) map[string]any {
+		t.Helper()
+		r.Session = sid
+		out, err := dispatch(r)
+		if err != nil {
+			t.Fatalf("%s: %v", r.Op, err)
+		}
+		return out
+	}
+	path := fmt.Sprintf("/chunk-read-%d", time.Now().UnixNano())
+	h := call(request{Op: "open", Path: path,
+		Create: true, Write: true})["handle"].(uint64)
+	const chunk = 64 << 20
+	payload := bytes.Repeat([]byte{0, 255, 37, 128}, maxRead/4)
+	for _, off := range []uint64{chunk - maxRead, chunk, 2 * chunk} {
+		call(request{Op: "write", Handle: h, Offset: off, Data: payload})
+	}
+	call(request{Op: "close", Handle: h})
+	h = call(request{Op: "open", Path: path})["handle"].(uint64)
+	for _, off := range []uint64{chunk - maxRead/2, chunk + maxRead - 16, 2*chunk - 16, 2*chunk + maxRead - 16} {
+		buffer := make([]byte, maxRead)
+		n, err := readBuffer(sid, h, unsafe.Pointer(&buffer[0]), maxRead, off)
+		wantLength := int(min(uint64(maxRead), 2*chunk+maxRead-off))
+		if err != nil || n != wantLength {
+			t.Fatalf("offset=%d n=%d want=%d err=%v", off, n, wantLength, err)
+		}
+		for i, got := range buffer[:n] {
+			pos := off + uint64(i)
+			want := byte(0)
+			if (pos >= chunk-maxRead && pos < chunk+maxRead) || pos >= 2*chunk {
+				want = payload[pos%4]
+			}
+			if got != want {
+				t.Fatalf("offset=%d byte=%d got=%d want=%d", off, i, got, want)
+			}
+		}
+	}
+	call(request{Op: "close", Handle: h})
 }
