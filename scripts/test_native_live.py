@@ -18,7 +18,6 @@ import urllib.request
 import uuid
 
 import pymysql
-from build_extent import TAGS
 from fault_proxy import FaultProxy
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -148,8 +147,10 @@ def main():
                                    cwd=args.fs_source, env=test_env, stdout=output, stderr=output, check=True)
                 print('Go storage, isolation, protocol, range and schema regressions passed', flush=True)
             env.update(DRIVE9_BASE=endpoint, DRIVE9_API_KEY=token, TIDBFS_TEST_LOG_DIR=str(log_dir))
-            subprocess.run(['go', 'test', '-race', '-mod=readonly', '-tags', TAGS, '-count=1', '-v', '.'],
-                           cwd=ROOT / 'bridge', env=dict(env, CGO_ENABLED='1'), check=True)
+            cpp_env = env.copy()
+            if os.environ.get('DRIVE9_CPP_SOURCE'):
+                cpp_env['DRIVE9_CPP_SOURCE'] = os.environ['DRIVE9_CPP_SOURCE']
+            subprocess.run(['python3', 'scripts/test_cpp.py', '--live'], cwd=ROOT, env=cpp_env, check=True)
             if not args.quack_only:
                 subprocess.run(['python3', 'scripts/native_smoke.py'] + args.tests, cwd=ROOT, env=env, check=True)
             if args.quack or args.quack_only:

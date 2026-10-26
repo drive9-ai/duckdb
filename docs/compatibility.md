@@ -19,8 +19,8 @@ DuckDB or POSIX compatibility claim.
 
 ## Verification
 
-`make test` builds and loads the extension and runs 30 analytical CLI fixtures.
-`scripts/test_native_live.py` runs bridge conformance, native DuckDB tests and
+`make test` builds and loads the extension and runs 31 analytical/HTTP CLI fixtures.
+`scripts/test_native_live.py` runs C++ SDK conformance, native DuckDB tests and
 client/server restart checks against disposable TiDB and filesystem services.
 See [the native adapter](native-database.md) for the exact failure scenarios.
 Server-side range validators, binary projections, shared-schema isolation and
@@ -48,11 +48,9 @@ partition, ambiguous-write and worker-handoff suite described in [Quack](quack.m
   is incomplete.
 - fsync uses the existing extent durability path. The first version syncs every
   write, trading performance for simple acknowledgement semantics.
-- The C++ adapter includes a Go runtime and cloud dependencies, increasing build
-  time and binary size. Linux ships the runtime as an adjacent shared library;
-  use `scripts/install.py` to install both files. macOS links it statically.
-  JSON/base64 inside its C ABI adds copies. It requires no helper daemon, FUSE
-  mount, or Go installation at runtime.
+- The extension uses the standalone C++ HTTP SDK, OpenSSL and libcurl. It has no
+  Go runtime or companion shared library. Extent payloads pass through typed
+  C++ buffers; JSON/base64 remains only in the existing metadata protocol.
 - Native mode inherits existing extent backend/permission limits, including
   rejection of subtree-scoped server tokens. It adds no 1 GiB database cap.
 - Named spill files can remain after a crash. Normal DuckDB cleanup removes

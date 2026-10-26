@@ -20,12 +20,13 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version-file: bridge/go.mod
-          cache-dependency-path: bridge/go.sum
+          # Go builds only the independent HTTP test server.
+          go-version: '1.26.0'
+          cache: false
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++ gdb strace cmake libcurl4-openssl-dev unzip
+          sudo apt-get install -y g++ gdb strace cmake libssl-dev libcurl4-openssl-dev unzip
       - name: Install matching DuckDB CLI and C++ headers
         run: |
           mkdir -p "$RUNNER_TEMP/duckdb/bin" "$RUNNER_TEMP/duckdb/source"
@@ -46,10 +47,8 @@ jobs:
         run: |
           make test
           python3 scripts/install.py --directory "$RUNNER_TEMP/installed-extensions"
-      - name: Race-check extent read lifetime and session guards
-        run: |
-          tags=$(python3 -c 'import sys; sys.path.insert(0,"scripts"); from build_extent import TAGS; print(TAGS)')
-          go test -C bridge -race -mod=readonly -tags "$tags" -count=1 .
+      - name: Test standalone C++ protocol, lifetime and HTTP failures
+        run: python3 scripts/test_cpp.py
       - name: Stress multipart success and abort with default and constrained async I/O
         run: |
           python3 scripts/stress_multipart.py --iterations 30
@@ -70,7 +69,7 @@ jobs:
           git -C "$source_dir" remote add origin https://github.com/mem9-ai/drive9.git
           git -C "$source_dir" fetch --depth=1 origin b529a36f7862c2397968a8e0b13e74b6040486c4
           git -C "$source_dir" checkout --detach FETCH_HEAD
-          tags=$(python3 -c 'import sys; sys.path.insert(0,"scripts"); from build_extent import TAGS; print(TAGS)')
+          tags=$(python3 -c 'import sys; sys.path.insert(0,"scripts"); from server_test_config import TAGS; print(TAGS)')
           CGO_ENABLED=0 go build -C "$source_dir" -mod=readonly -p=2 -tags "$tags" -o "$RUNNER_TEMP/drive9-server" ./cmd/drive9-server
           python3 scripts/download_rustfs.py --output "$RUNNER_TEMP/rustfs"
       - name: Native compatibility on the public upstream server

@@ -11,9 +11,9 @@ the build and test scripts.
 
 The current target is DuckDB **v2.0.0**, with macOS arm64 and Linux amd64 validation. C++ extensions
 must be built against the exact DuckDB version and platform that loads them.
-Install the DuckDB C++ headers, a C++17 compiler, Go 1.25.1 or newer, and libcurl headers/library.
-The build links the existing drive9 Go extent runtime into the C++ extension.
-Go is a build dependency; no helper process or Go installation is required at runtime.
+Install the matching DuckDB C++ headers, a C++17 compiler, CMake, OpenSSL and libcurl development libraries.
+The extension links the public [drive9 C++ SDK](https://github.com/mem9-ai/drive9/tree/codex/cpp-http-client/clients/drive9-cpp), pinned in `cpp-sdk-revision.txt`.
+It calls the existing HTTP APIs directly and includes no Go bridge or Go runtime.
 For Homebrew DuckDB on Apple Silicon:
 
 ```sh
@@ -70,13 +70,10 @@ through stdin rather than placing credentials in process arguments.
 The build is unsigned and is not published to DuckDB's extension repository.
 `INSTALL tidbfs` from a public repository is not available yet.
 
-Linux builds produce `tidbfs.duckdb_extension` and `libtidbfs_extent.so`;
-keep them in the same directory when using `LOAD '/path/tidbfs.duckdb_extension'`.
-To install into DuckDB's extension directory, run `python3 scripts/install.py`;
-it installs both files and verifies `LOAD tidbfs`. Plain SQL `INSTALL` copies
-only the extension, so it is insufficient for the Linux bundle. The separate
-runtime avoids glibc's static TLS limit when loading Go together with DuckDB.
-macOS builds contain the runtime in the extension itself.
+Both Linux and macOS builds produce a single `tidbfs.duckdb_extension` file.
+Use SQL `INSTALL` or `python3 scripts/install.py` to install it; no adjacent
+runtime library is required. OpenSSL and libcurl remain system dependencies.
+Go is used only to build the independent filesystem server in integration CI.
 
 ## Write support and compatibility
 

@@ -1,4 +1,7 @@
-# Extent read path and Quack performance
+# Historical Go bridge baseline: Extent read path and Quack performance
+
+This report records the earlier Go-backed implementation. The current C++ migration
+and new measurements are described in [C++ client performance](cpp-client-performance.md).
 
 Native databases and analytical files with extent layout share the same read
 adapter. Positional reads now pass a caller-owned DuckDB buffer through a
