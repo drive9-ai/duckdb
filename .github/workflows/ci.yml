@@ -120,7 +120,7 @@ jobs:
           source_dir="$RUNNER_TEMP/drive9-source"
           git init "$source_dir"
           git -C "$source_dir" remote add origin https://github.com/mem9-ai/drive9.git
-          git -C "$source_dir" fetch --depth=1 origin 09f6d469ee2b79579f3ede5013648679b8d61652
+          git -C "$source_dir" fetch --depth=1 origin 41ddb6b807738efb5350a1b1eef10ed5692893ba
           git -C "$source_dir" checkout --detach FETCH_HEAD
           tags=$(python3 -c 'import sys; sys.path.insert(0,"scripts"); from server_test_config import TAGS; print(TAGS)')
           CGO_ENABLED=0 go build -C "$source_dir" -mod=readonly -p=2 -tags "$tags" -o "$RUNNER_TEMP/drive9-server" ./cmd/drive9-server
@@ -157,6 +157,12 @@ jobs:
             QuackTests.test_conflicting_writers_rollback_and_snapshot \
             QuackTests.test_clean_worker_handoff_and_readonly_clients \
             QuackTests.test_transient_object_faults_through_quack
+      - name: Repeat buffer-limited remote scans and WAL commits
+        run: |
+          for trial in 2 3; do
+            python3 scripts/test_native_live.py --tidb-server "$RUNNER_TEMP/tidb/tidb-server" --fs-server "$RUNNER_TEMP/drive9-server" --rustfs-server "$RUNNER_TEMP/rustfs" --quack-only --log-dir "build/quack-live-repeat-$trial" \
+              QuackTests.test_parallel_buffer_limited_scans_and_writes
+          done
       - name: Preserve HTTP timeout diagnostics and matching binaries
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -165,7 +171,7 @@ jobs:
           retention-days: 7
           path: |
             build/http-traces/
-            build/quack-live/*stderr.log
-            build/quack-live/quack-timeouts/
+            build/quack-live*/*stderr.log
+            build/quack-live*/quack-timeouts/
             build/tidbfs.duckdb_extension
-            build/quack-live/proxy-*-summary.json
+            build/quack-live*/proxy-*-summary.json

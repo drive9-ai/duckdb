@@ -23,6 +23,11 @@ The independent SDK tests cover binary and sparse reads, slice overlays,
 large session IDs, lost acknowledgements, late publication after session
 cleanup, credential binding, concurrent readers and close/read ordering.
 Network tests cover bounded requests, pool recovery and redirect rejection.
+Sync waits for in-flight publication while immutable downloads continue; a
+gated regression fails with the former exclusive Sync lock and passes with
+the shared barrier. Legacy servers reject unsafe directory mutations. Raw
+metadata regressions cover classic-only rename targets without relying on a
+client preflight, including target type, nonempty targets and valid replacement.
 Cloud credential regressions cover omitted S3/GCS endpoints, authoritative
 signing regions, generated AWS partition DNS data, custom/FIPS/VPC endpoints,
 TLS-safe dotted-bucket addressing and scoped GCS OAuth. These protocol fixtures

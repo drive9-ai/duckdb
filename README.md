@@ -153,7 +153,7 @@ writes after cleanup. Older servers retain legacy behavior. Advisory locks still
 require cooperating clients.
 Each write uploads immutable objects and waits for the existing metadata
 publication to succeed before acknowledging it. Sync waits for in-flight writes.
-Directory creation negotiates the generic `directory_projection` capability
+Directory mutations negotiate the generic `directory_projection` capability
 and uses optional `mknod.create_projection`; its default preserves existing
 Go/FUSE clients. See [setup, recovery behavior and live tests](docs/native-database.md).
 The live harness includes disposable RustFS tests for upload/download failures,
