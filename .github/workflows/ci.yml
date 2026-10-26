@@ -103,6 +103,7 @@ jobs:
         with:
           path: build/ccache
           key: cpp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cpp-sdk-revision.txt', 'src/**', 'CMakeLists.txt', 'extension_config.cmake', 'scripts/build.py') }}
+          restore-keys: cpp-${{ runner.os }}-${{ runner.arch }}-
       - name: Build, load, and test the native extension
         if: github.event_name != 'workflow_dispatch' || inputs.diagnostic_artifact_run == ''
         env:
@@ -137,7 +138,7 @@ jobs:
           source_dir="$RUNNER_TEMP/drive9-source"
           git init "$source_dir"
           git -C "$source_dir" remote add origin https://github.com/mem9-ai/drive9.git
-          git -C "$source_dir" fetch --depth=1 origin be5784c01ce22e34eb34225fe748e8ff1debed90
+          git -C "$source_dir" fetch --depth=1 origin 9a1fac5f4225ebeb6cc9a1e29118179d2d77a342
           git -C "$source_dir" checkout --detach FETCH_HEAD
           tags=$(python3 -c 'import sys; sys.path.insert(0,"scripts"); from server_test_config import TAGS; print(TAGS)')
           CGO_ENABLED=0 go build -C "$source_dir" -mod=readonly -p=2 -tags "$tags" -o "$RUNNER_TEMP/drive9-server" ./cmd/drive9-server
