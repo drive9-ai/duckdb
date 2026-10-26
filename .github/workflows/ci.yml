@@ -9,6 +9,43 @@ permissions:
   contents: read
 
 jobs:
+  quack-http-control:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        async_tasks: ['default', '1']
+    env:
+      DUCKDB_AGENT_MODE: '0'
+      TIDBFS_QUACK_BACKEND: local
+      TIDBFS_QUACK_HTTP_ASYNC_TASKS: ${{ matrix.async_tasks }}
+      TIDBFS_GDB_ON_TIMEOUT: '1'
+      TIDBFS_TEST_LOG_DIR: build/quack-local-${{ matrix.async_tasks }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install official DuckDB and Quack without tidbfs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gdb
+          mkdir -p "$RUNNER_TEMP/quack-control" "$TIDBFS_TEST_LOG_DIR"
+          curl -fsSL --retry 3 https://github.com/duckdb/duckdb/releases/download/v2.0.0/duckdb-cli-linux-amd64.tar.gz -o "$RUNNER_TEMP/quack-control/cli.tar.gz"
+          printf '%s  %s\n' c6507206baf7793c6013dbd82368469a45f20dc0e17a6f92f204602f652ed2bc "$RUNNER_TEMP/quack-control/cli.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/quack-control/cli.tar.gz" -C "$RUNNER_TEMP/quack-control"
+          chmod +x "$RUNNER_TEMP/quack-control/duckdb"
+          printf 'DUCKDB=%s\n' "$RUNNER_TEMP/quack-control/duckdb" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/quack-control/duckdb" -bail -c "INSTALL quack FROM 'https://extensions.duckdb.org'; LOAD quack;"
+      - name: Repeat concurrent scans and writes on local files
+        run: |
+          for trial in 1 2 3; do
+            python3 scripts/quack_smoke.py QuackTests.test_parallel_buffer_limited_scans_and_writes
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: quack-local-${{ matrix.async_tasks }}-${{ github.run_id }}
+          path: build/quack-local-${{ matrix.async_tasks }}/
+          retention-days: 7
   native-extension:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -67,7 +104,7 @@ jobs:
           source_dir="$RUNNER_TEMP/drive9-source"
           git init "$source_dir"
           git -C "$source_dir" remote add origin https://github.com/mem9-ai/drive9.git
-          git -C "$source_dir" fetch --depth=1 origin 7ef95b8c8457a1cc9c1bec81ce2ff375155ba6dd
+          git -C "$source_dir" fetch --depth=1 origin b5fe6857b6cb20aa0baef6a0383cc7196be208f5
           git -C "$source_dir" checkout --detach FETCH_HEAD
           tags=$(python3 -c 'import sys; sys.path.insert(0,"scripts"); from server_test_config import TAGS; print(TAGS)')
           CGO_ENABLED=0 go build -C "$source_dir" -mod=readonly -p=2 -tags "$tags" -o "$RUNNER_TEMP/drive9-server" ./cmd/drive9-server
@@ -111,5 +148,7 @@ jobs:
           retention-days: 7
           path: |
             build/http-traces/
+            build/quack-live/*stderr.log
+            build/quack-live/quack-timeouts/
             build/tidbfs.duckdb_extension
             build/libtidbfs_extent.so

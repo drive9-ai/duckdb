@@ -12,6 +12,11 @@ still wait for object upload and metadata publication. The SDK coalesces block
 downloads, shares immutable cache buffers and copies requested bytes into
 DuckDB's destination without a language boundary.
 
+The only required API extension is generic, opt-in atomic directory creation in
+[fs #274](https://github.com/tidbcloud/fs/pull/274): `mknod.create_projection`,
+advertised by `new_session.directory_projection`. Its default preserves the
+existing Go/FUSE mkdir sequence. No endpoint, table or lock protocol is added.
+
 ## Validation
 
 The independent SDK tests cover binary and sparse reads, slice overlays,
@@ -41,7 +46,9 @@ plugin build and runtime.
 
 The new comparison uses `scripts/benchmark_quack.py` with three independent
 Quack workers: pure C++ tidbfs, the previous optimized Go-backed tidbfs and local
-files. DuckDB, Quack, server, RustFS, data, thread counts and durability policy
+files. The Go baseline already uses direct-buffer reads and the same 64 MiB
+client cache budget; results compare complete implementations rather than
+isolating language-boundary overhead. DuckDB, Quack, server, RustFS, data, thread counts and durability policy
 are held constant. Runs are sequential, backend order rotates, and each
 configuration has three trials. Measurements include throughput, p50/p95/p99,
 worker/server CPU and RSS, object/metadata operations, integrity and host paging.

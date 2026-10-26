@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import queue
+import shutil
 import secrets
 import socket
 import subprocess
@@ -27,8 +28,8 @@ from fault_proxy import FaultProxy
 
 ROOT = Path(__file__).resolve().parents[1]
 DUCKDB = os.environ.get('DUCKDB', 'duckdb')
-ENDPOINT = os.environ['DRIVE9_BASE']
-FS_TOKEN = os.environ['DRIVE9_API_KEY']
+ENDPOINT = os.environ.get('DRIVE9_BASE', '')
+FS_TOKEN = os.environ.get('DRIVE9_API_KEY', '')
 QUACK = os.environ.get('TIDBFS_QUACK_EXTENSION', 'quack')
 EXTENSION = Path(os.environ.get('TIDBFS_TEST_EXTENSION', ROOT / 'build/tidbfs.duckdb_extension')).resolve()
 HEARTBEAT = int(os.environ.get('TIDBFS_QUACK_HEARTBEAT_MS', '12000'))
@@ -47,7 +48,7 @@ def port():
 class CLI:
     """Bounded persistent CLI commands, including expected SQL failures."""
     def __init__(self, directory, name, redactions=()):
-        self.redactions = (FS_TOKEN,) + tuple(redactions)
+        self.redactions = tuple(value for value in (FS_TOKEN,) + tuple(redactions) if value)
         self.log_path = Path(directory) / (name + '.stderr.log')
         self.log = self.log_path.open('w')
         self.lines = queue.Queue()
@@ -72,6 +73,7 @@ class CLI:
         return text
 
     def execute(self, statement, *, error=False, timeout=90):
+        self.last_command = {'kind': statement.split()[0], 'started': time.monotonic(), 'finished': False}
         offset = len(self.log_path.read_text())
         marker = 'quack_test_' + uuid.uuid4().hex
         if self.process.poll() is not None:
@@ -84,10 +86,14 @@ class CLI:
             try:
                 line = self.lines.get(timeout=max(0.01, deadline - time.monotonic()))
             except queue.Empty:
+                callback = getattr(self, 'on_timeout', None)
+                if callback:
+                    callback(self)
                 raise TimeoutError('Quack CLI command timed out; inspect private build logs') from None
             if line is None:
                 raise RuntimeError('DuckDB exited: ' + self.redact(self.log_path.read_text())[-2500:])
             if line == marker:
+                self.last_command['finished'] = True
                 break
             if line:
                 rows.append(line)
@@ -125,23 +131,31 @@ class QuackTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix='tidbfs-quack-')
         self.addCleanup(self.tmp.cleanup)
-        self.uri = 'tidbfs+db:///quack-' + uuid.uuid4().hex + '.duckdb'
+        self.local = os.environ.get('TIDBFS_QUACK_BACKEND') == 'local'
+        self.uri = str(Path(self.tmp.name) / 'local.duckdb') if self.local else 'tidbfs+db:///quack-' + uuid.uuid4().hex + '.duckdb'
         self.token = secrets.token_hex(24)
         self.address = 'quack:127.0.0.1:' + str(port())
         self.counter = 0
+        self.instances = []
+        self.timeout_mu = threading.Lock()
+        self.timeout_captured = False
 
     def cli(self, role):
         self.counter += 1
-        cli = CLI(self.tmp.name, role + '-' + str(self.counter), (self.token,))
+        cli = CLI(self.tmp.name, self._testMethodName + '-' + role + '-' + str(self.counter), (self.token,))
+        cli.role = role
+        cli.on_timeout = self.capture_timeout
+        self.instances.append(cli)
         self.addCleanup(cli.close)
         return cli
 
     def prepare_worker(self, *, endpoint=ENDPOINT, name='worker'):
         worker = self.cli(name)
-        worker.execute(f"LOAD {quote(EXTENSION)}; LOAD {quote(QUACK)}; "
-            f"CREATE SECRET fs (TYPE tidbfs, ENDPOINT {quote(endpoint)}, TOKEN {quote(FS_TOKEN)}); "
-            f"SET GLOBAL tidbfs_heartbeat_ms={HEARTBEAT}; SET threads=4; "
-            "SET checkpoint_threshold='1GB';")
+        init = f'LOAD {quote(QUACK)}; SET threads=4; SET checkpoint_threshold=\'1GB\'; '
+        if not self.local:
+            init += (f"LOAD {quote(EXTENSION)}; CREATE SECRET fs (TYPE tidbfs, ENDPOINT {quote(endpoint)}, TOKEN {quote(FS_TOKEN)}); "
+                     f'SET GLOBAL tidbfs_heartbeat_ms={HEARTBEAT}; ')
+        worker.execute(init)
         return worker
 
     def attach_worker(self, worker, *, readonly=False, retry=False):
@@ -169,9 +183,47 @@ class QuackTests(unittest.TestCase):
 
     def client(self):
         client = self.cli('client')
-        client.execute(f"LOAD {quote(QUACK)}; SET http_timeout=10; "
+        tasks = os.environ.get('TIDBFS_QUACK_HTTP_ASYNC_TASKS', 'default')
+        setting = '' if tasks == 'default' else f'SET http_async_tasks_per_thread={int(tasks)}; '
+        client.execute(f"LOAD {quote(QUACK)}; SET http_timeout=10; " + setting +
                        f"ATTACH {quote(self.address)} AS q (TOKEN {quote(self.token)}); CONNECT q; USE shared;")
         return client
+
+    def capture_timeout(self, source=None):
+        # Preserve the first blocked state before teardown and later tests can
+        # overwrite it. Never dump SQL, environment variables or frame arguments.
+        with self.timeout_mu:
+            if self.timeout_captured:
+                return
+            self.timeout_captured = True
+        root = Path(os.environ.get('TIDBFS_TEST_LOG_DIR', self.tmp.name)) / 'quack-timeouts' / self._testMethodName
+        root.mkdir(parents=True, exist_ok=True)
+        now = time.monotonic()
+        snapshots = []
+        for cli in self.instances:
+            command = dict(getattr(cli, 'last_command', {}))
+            if 'started' in command:
+                command['elapsed_seconds'] = now - command.pop('started')
+            snapshots.append({'pid': cli.process.pid, 'role': cli.role,
+                              'exit_code': cli.process.poll(), 'command': command})
+            if cli.log_path.exists():
+                (root / cli.log_path.name).write_text(cli.redact(cli.log_path.read_text()))
+        (root / 'commands.json').write_text(json.dumps(snapshots, indent=2) + '\n')
+        if os.environ.get('TIDBFS_GDB_ON_TIMEOUT') == '1' and shutil.which('gdb'):
+            targets = [cli for cli in self.instances if cli.role.startswith('worker')]
+            if source is not None and source not in targets:
+                targets.append(source)
+            for cli in targets:
+                if cli.process.poll() is not None:
+                    continue
+                try:
+                    result = subprocess.run(['sudo', '-n', 'gdb', '--batch', '-p', str(cli.process.pid),
+                        '-ex', 'set pagination off', '-ex', 'set print frame-arguments none',
+                        '-ex', 'thread apply all bt', '-ex', 'detach'],
+                        capture_output=True, text=True, timeout=20, check=False)
+                    (root / (cli.log_path.stem + '-stacks.log')).write_text(cli.redact(result.stdout + result.stderr))
+                except (OSError, subprocess.TimeoutExpired) as error:
+                    (root / (cli.log_path.stem + '-capture-error.log')).write_text(type(error).__name__ + '\n')
 
     def verify(self, client, rows):
         expected = hashlib.md5('\n'.join(f'{i}:{hashlib.md5(str(i).encode()).hexdigest()}'
@@ -192,7 +244,7 @@ class QuackTests(unittest.TestCase):
 
     def replacement(self, old, *, kill=False):
         new = self.prepare_worker(name='worker-B')
-        with self.assertRaisesRegex(RuntimeError, 'locked'):
+        with self.assertRaisesRegex(RuntimeError, '(?i)lock'):
             self.attach_worker(new)
         if kill:
             old.kill()
@@ -231,7 +283,11 @@ class QuackTests(unittest.TestCase):
         with ThreadPoolExecutor(max_workers=5) as pool:
             tasks = [pool.submit(read, client) for client in readers] + [pool.submit(write)]
             for task in tasks:
-                task.result(timeout=300)
+                try:
+                    task.result(timeout=300)
+                except TimeoutError:
+                    self.capture_timeout()
+                    raise
         self.assertEqual(writer.execute('SELECT count(*), sum(i) FROM commits;'), ['12,66'])
         # Closing the old worker must release all handles after concurrent
         # scans. Reopen, checkpoint and shrink a table to exercise mutations.

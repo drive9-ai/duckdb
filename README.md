@@ -154,7 +154,9 @@ writes after cleanup. Older servers retain legacy behavior. Advisory locks still
 require cooperating clients.
 The initial write policy calls existing VFS fsync
 after each write before acknowledging it. This favors correctness over batching.
-See [setup, recovery behavior and live tests](docs/native-database.md).
+Directory creation negotiates the generic `directory_projection` capability
+and uses optional `mknod.create_projection`; its default preserves existing
+Go/FUSE clients. See [setup, recovery behavior and live tests](docs/native-database.md).
 The live harness includes disposable RustFS tests for upload/download failures,
 lost responses, truncated reads, failed COMMIT and checkpoint crash recovery.
 The [interrupted-handoff demo](docs/demos/interrupted-handoff/README.md) disconnects
