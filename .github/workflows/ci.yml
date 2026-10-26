@@ -73,7 +73,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++ gdb strace cmake ccache libssl-dev libcurl4-openssl-dev unzip
+          sudo apt-get install -y g++ gdb strace tcpdump cmake ccache libssl-dev libcurl4-openssl-dev unzip
       - name: Install matching DuckDB CLI and C++ headers
         run: |
           mkdir -p "$RUNNER_TEMP/duckdb/bin" "$RUNNER_TEMP/duckdb/source"

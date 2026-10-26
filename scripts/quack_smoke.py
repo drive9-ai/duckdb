@@ -229,18 +229,36 @@ class QuackTests(unittest.TestCase):
                 # Raw send/receive arguments show only pointers and byte counts,
                 # never payloads, SQL, API keys or Authorization headers.
                 try:
+                    packets = None
+                    packet_log = None
+                    proxy_port = urllib.parse.urlsplit(proxy).port if proxy else None
+                    if proxy_port and shutil.which('tcpdump'):
+                        # IPv4 loopback: 14-byte link + 20-byte IP + 20-byte
+                        # TCP base header. Capture no payload or TCP options.
+                        packet_log = (root / 'object-tcp-headers.txt').open('w')
+                        packets = subprocess.Popen(['sudo', '-n', 'timeout', '35', 'tcpdump',
+                            '-nn', '-tt', '-S', '-l', '-s', '54', '-i', 'lo',
+                            'ip', 'and', 'tcp', 'and', 'port', str(proxy_port)],
+                            stdout=packet_log, stderr=subprocess.DEVNULL)
                     subprocess.run(['sudo', '-n', 'timeout', '35', 'strace', '-f', '-tt', '-T',
                         '-e', 'trace=poll,ppoll,recvfrom,sendto,setsockopt,getsockopt',
                         '-e', 'raw=recvfrom,sendto', '-p', str(worker.process.pid),
                         '-o', str(root / 'worker-network.strace')],
                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, timeout=40)
-                    result = subprocess.run(['ss', '-tinp'], capture_output=True, text=True, timeout=5, check=False)
+                    if packets is not None:
+                        packets.wait(timeout=5)
+                        packet_log.close()
+                    result = subprocess.run(['ss', '-tinmp'], capture_output=True, text=True, timeout=5, check=False)
                     # ss separates connections by a data line followed by its stats.
                     lines = result.stdout.splitlines(); selected = []
                     for index, line in enumerate(lines):
-                        if 'pid=' + str(worker.process.pid) + ',' in line:
+                        if 'pid=' + str(worker.process.pid) + ',' in line or (proxy_port and f':{proxy_port} ' in line):
                             selected.extend(lines[index:index+2])
                     (root / 'worker-sockets.txt').write_text('\n'.join(selected) + '\n')
+                    result = subprocess.run(['sysctl', 'net.ipv4.tcp_rmem', 'net.ipv4.tcp_wmem',
+                        'net.core.rmem_max', 'net.core.wmem_max', 'net.ipv4.tcp_moderate_rcvbuf',
+                        'net.ipv4.tcp_shrink_window'], capture_output=True, text=True, timeout=5, check=False)
+                    (root / 'tcp-buffer-settings.txt').write_text(result.stdout)
                 except (OSError, subprocess.TimeoutExpired):
                     (root / 'network-capture-error.txt').write_text('Network trace unavailable\n')
         if os.environ.get('TIDBFS_GDB_ON_TIMEOUT') == '1' and shutil.which('gdb'):
