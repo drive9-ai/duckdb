@@ -120,7 +120,7 @@ jobs:
           source_dir="$RUNNER_TEMP/drive9-source"
           git init "$source_dir"
           git -C "$source_dir" remote add origin https://github.com/mem9-ai/drive9.git
-          git -C "$source_dir" fetch --depth=1 origin b5fe6857b6cb20aa0baef6a0383cc7196be208f5
+          git -C "$source_dir" fetch --depth=1 origin 09f6d469ee2b79579f3ede5013648679b8d61652
           git -C "$source_dir" checkout --detach FETCH_HEAD
           tags=$(python3 -c 'import sys; sys.path.insert(0,"scripts"); from server_test_config import TAGS; print(TAGS)')
           CGO_ENABLED=0 go build -C "$source_dir" -mod=readonly -p=2 -tags "$tags" -o "$RUNNER_TEMP/drive9-server" ./cmd/drive9-server
