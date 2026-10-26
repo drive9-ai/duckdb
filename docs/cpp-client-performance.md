@@ -18,6 +18,10 @@ The independent SDK tests cover binary and sparse reads, slice overlays,
 large session IDs, lost acknowledgements, late publication after session
 cleanup, credential binding, concurrent readers and close/read ordering.
 Network tests cover bounded requests, pool recovery and redirect rejection.
+Cloud credential regressions cover omitted S3/GCS endpoints, authoritative
+signing regions, generated AWS partition DNS data, custom/FIPS/VPC endpoints,
+TLS-safe dotted-bucket addressing and scoped GCS OAuth. These protocol fixtures
+do not claim production AWS/GCS fault certification; live object tests use RustFS.
 Linux SDK CI enables address and undefined-behavior sanitizers; macOS runs the
 same suite. The integration harness runs direct C++ protocol conformance before
 the native database and Quack suites, using isolated TiDB/TiKV and RustFS.
