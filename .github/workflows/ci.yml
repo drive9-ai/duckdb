@@ -98,7 +98,8 @@ jobs:
           gh run download "$ARTIFACT_RUN" --repo "$GITHUB_REPOSITORY" --name "http-timeout-$ARTIFACT_RUN" --dir "$RUNNER_TEMP/replay-artifact"
           cp "$RUNNER_TEMP/replay-artifact/tidbfs.duckdb_extension" build/
       - name: Cache C++ compilation
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        id: cpp-cache
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4
         with:
           path: build/ccache
           key: cpp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cpp-sdk-revision.txt', 'src/**', 'CMakeLists.txt', 'extension_config.cmake', 'scripts/build.py') }}
@@ -109,6 +110,12 @@ jobs:
         run: |
           make test
           python3 scripts/install.py --directory "$RUNNER_TEMP/installed-extensions"
+      - name: Save compilation cache before integration tests
+        if: steps.cpp-cache.outputs.cache-hit != 'true' && (github.event_name != 'workflow_dispatch' || inputs.diagnostic_artifact_run == '')
+        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: build/ccache
+          key: cpp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cpp-sdk-revision.txt', 'src/**', 'CMakeLists.txt', 'extension_config.cmake', 'scripts/build.py') }}
       - name: Test standalone C++ protocol, lifetime and HTTP failures
         run: python3 scripts/test_cpp.py
       - name: Stress multipart success and abort with default and constrained async I/O
@@ -130,7 +137,7 @@ jobs:
           source_dir="$RUNNER_TEMP/drive9-source"
           git init "$source_dir"
           git -C "$source_dir" remote add origin https://github.com/mem9-ai/drive9.git
-          git -C "$source_dir" fetch --depth=1 origin 3890ee867bea5e4095874c92d5674859890d4e0e
+          git -C "$source_dir" fetch --depth=1 origin 573e9b285f5ed45b8311cbbdda7eaa4dec5a7a0c
           git -C "$source_dir" checkout --detach FETCH_HEAD
           tags=$(python3 -c 'import sys; sys.path.insert(0,"scripts"); from server_test_config import TAGS; print(TAGS)')
           CGO_ENABLED=0 go build -C "$source_dir" -mod=readonly -p=2 -tags "$tags" -o "$RUNNER_TEMP/drive9-server" ./cmd/drive9-server
