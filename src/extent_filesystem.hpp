@@ -12,10 +12,10 @@ struct ExtentClient {
 	std::unique_ptr<drive9::ExtentFileSystem> fs;
 	explicit ExtentClient(const Config &config) : heartbeat_ms(config.heartbeat_ms) {
 		try {
-            drive9::ClientOptions client_options;
-            client_options.endpoint = config.endpoint;
-            client_options.token = config.token;
-            client = std::make_shared<drive9::Client>(std::move(client_options));
+			drive9::ClientOptions client_options;
+			client_options.endpoint = config.endpoint;
+			client_options.token = config.token;
+			client = std::make_shared<drive9::Client>(std::move(client_options));
 			drive9::ExtentOptions options;
 			options.heartbeat = std::chrono::milliseconds(config.heartbeat_ms);
 			fs = std::make_unique<drive9::ExtentFileSystem>(client, options);
