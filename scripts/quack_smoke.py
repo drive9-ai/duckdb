@@ -314,20 +314,31 @@ class QuackTests(unittest.TestCase):
             for i in range(12):
                 writer.execute(f'INSERT INTO commits VALUES ({i});')
 
-        with ThreadPoolExecutor(max_workers=5) as pool:
-            tasks = [pool.submit(read, client) for client in readers] + [pool.submit(write)]
-            for task in tasks:
-                try:
-                    task.result(timeout=int(os.environ.get('TIDBFS_QUACK_TASK_TIMEOUT', '300')))
-                except TimeoutError:
-                    self.capture_timeout()
-                    # Stop outstanding client loops before ThreadPoolExecutor's
-                    # context manager waits for them. Keep the captured worker
-                    # state, then let normal cleanup terminate the worker.
-                    for client in readers + [writer]:
-                        if client.process.poll() is None:
-                            client.kill()
-                    raise
+        watcher = None
+        delay = os.environ.get('TIDBFS_NETWORK_TRACE_AFTER_SECONDS')
+        if delay:
+            watcher = threading.Timer(float(delay), self.capture_timeout)
+            watcher.daemon = True
+            watcher.start()
+        try:
+            with ThreadPoolExecutor(max_workers=5) as pool:
+                tasks = [pool.submit(read, client) for client in readers] + [pool.submit(write)]
+                for task in tasks:
+                    try:
+                        task.result(timeout=int(os.environ.get('TIDBFS_QUACK_TASK_TIMEOUT', '300')))
+                    except TimeoutError:
+                        self.capture_timeout()
+                        # Stop outstanding client loops before ThreadPoolExecutor's
+                        # context manager waits for them. Keep the captured worker
+                        # state, then let normal cleanup terminate the worker.
+                        for client in readers + [writer]:
+                            if client.process.poll() is None:
+                                client.kill()
+                        raise
+        finally:
+            if watcher is not None:
+                watcher.cancel()
+                watcher.join(timeout=55)
         self.assertEqual(writer.execute('SELECT count(*), sum(i) FROM commits;'), ['12,66'])
         # Closing the old worker must release all handles after concurrent
         # scans. Reopen, checkpoint and shrink a table to exercise mutations.

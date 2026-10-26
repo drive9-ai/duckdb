@@ -59,6 +59,7 @@ jobs:
       DUCKDB_AGENT_MODE: '0'
       TIDBFS_GDB_ON_TIMEOUT: '1'
       TIDBFS_STRACE_ON_TIMEOUT: '1'
+      TIDBFS_NETWORK_TRACE_AFTER_SECONDS: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnostic_artifact_run != '' && '1' || '' }}
       TIDBFS_QUACK_TASK_TIMEOUT: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnostic_artifact_run != '' && '120' || '300' }}
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
       CCACHE_DIR: ${{ github.workspace }}/build/ccache
@@ -173,7 +174,7 @@ jobs:
               QuackTests.test_parallel_buffer_limited_scans_and_writes
           done
       - name: Preserve HTTP timeout diagnostics and matching binaries
-        if: failure()
+        if: failure() || (github.event_name == 'workflow_dispatch' && inputs.diagnostic_artifact_run != '')
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: http-timeout-${{ github.run_id }}
