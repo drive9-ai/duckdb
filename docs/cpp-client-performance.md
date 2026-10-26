@@ -26,6 +26,10 @@ the native database and Quack suites, using isolated TiDB/TiKV and RustFS.
 prior-client compatibility test. It creates a database with the prior client,
 reads and changes it with C++, then reopens it with the prior client. It also
 reads C++-created extent Parquet through the prior client's ordinary URI route.
+The prior client then writes again while C++ files remain live, checking both
+slice-ID and inode-ID reservation boundaries. This regression reproduces an
+I/O failure with the initial C++ draft; the SDK now uses the same half-open,
+batched ID reservations as the existing clients and supplies explicit inodes.
 This requires only a historical test artifact; Go is absent from the current
 plugin build and runtime.
 

@@ -53,12 +53,21 @@ class NativeDatabaseTests(unittest.TestCase):
     def test_prior_client_file_format_interoperability(self):
         prior = Path(os.environ['TIDBFS_INTEROP_EXTENSION']).resolve()
         sql(self.attach + 'CREATE TABLE interop AS SELECT i, i*3 AS v FROM range(100000) t(i); CHECKPOINT;', extension=prior)
-        self.assertEqual(sql(self.attach + 'SELECT sum(v) FROM interop;'), '14999850000')
+        self.assertEqual(sql(self.attach + 'SELECT sum(v) FROM interop;').splitlines()[-1], '14999850000')
         sql(self.attach + 'UPDATE interop SET v=v+1 WHERE i<100; INSERT INTO interop VALUES (100000, 7); CHECKPOINT;')
-        self.assertEqual(sql(self.readonly + 'SELECT count(*), sum(v) FROM interop;', extension=prior), '100001,14999850107')
+        self.assertEqual(sql(self.readonly + 'SELECT count(*), sum(v) FROM interop;', extension=prior).splitlines()[-1], '100001,14999850107')
+        # Force a fresh prior-client reservation AFTER C++ publishes objects.
+        # Its writes must not reuse C++ slice IDs or overwrite immutable blocks.
+        sql(self.attach + 'INSERT INTO interop VALUES (100001, 11); CHECKPOINT;', extension=prior)
+        self.assertEqual(sql(self.readonly + 'SELECT count(*), sum(v) FROM interop;').splitlines()[-1], '100002,14999850118')
         parquet = self.uri + '.parquet'
         sql(f"COPY (SELECT i FROM range(8192) t(i)) TO {quote(parquet)} (FORMAT PARQUET);")
-        self.assertEqual(sql(f"SELECT count(*), sum(i) FROM read_parquet({quote(parquet.replace('tidbfs+db:', 'tidbfs:'))});", extension=prior), '8192,33550336')
+        # Keep the C++ Parquet inode live while the prior client creates a new
+        # inode, catching an inclusive/exclusive inode-counter mismatch too.
+        other = self.uri + '.prior.parquet'
+        sql(f"COPY (SELECT i+100 AS i FROM range(1024) t(i)) TO {quote(other)} (FORMAT PARQUET);", extension=prior)
+        self.assertEqual(sql(f"SELECT count(*), sum(i) FROM read_parquet({quote(parquet.replace('tidbfs+db:', 'tidbfs:'))});", extension=prior).splitlines()[-1], '8192,33550336')
+        self.assertEqual(sql(f"SELECT count(*), sum(i) FROM read_parquet({quote(other.replace('tidbfs+db:', 'tidbfs:'))});").splitlines()[-1], '1024,626176')
 
     def setUp(self):
         self.uri = 'tidbfs+db:///conformance-' + uuid.uuid4().hex + '.duckdb'
