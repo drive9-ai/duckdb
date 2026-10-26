@@ -32,12 +32,12 @@ It does not select a separate storage namespace.
 
 No server flag or schema migration is needed for native mode. It needs a server
 with the existing extent API and a supported data-credential backend. Directory
-creation additionally needs `new_session.directory_projection=true` from
+creation, removal and rename additionally need `new_session.directory_projection=true` from
 [fs #274](https://github.com/tidbcloud/fs/pull/274). The generic
 `mknod.create_projection` option creates both views in one transaction; it defaults
 to false to preserve existing Go/FUSE two-step mkdir. Older servers remain usable
 for file operations and existing-directory mirroring, while unsupported directory
-creation fails before mutation. The
+mutations fail before mutation. The
 current runtime supports local file storage for tests and S3/GCS object storage.
 Subtree-scoped server tokens are rejected by the existing inode API; use an
 unscoped filesystem token. DuckDB secret scopes only control client routing.
