@@ -273,7 +273,7 @@ def main():
     clean.update(TZ='UTC',DUCKDB_AGENT_MODE='0')
     with tempfile.TemporaryDirectory(prefix='runtime-',dir=logs) as tmp:
         try:
-            sql_port,status_port,fs_port,s3_port=port(),port(),port(),port()
+            sql_port,status_port,fs_port,s3_port,metrics_port=port(),port(),port(),port(),port()
             tidb=launch([str(Path(args.tidb_server).resolve()),'--host=127.0.0.1','-P='+str(sql_port),
                 '--status='+str(status_port),'--status-host=127.0.0.1','--log-slow-query='+str(logs/'tidb-slow.log'),'-L=error'], 'tidb',clean)
             db=wait(lambda:pymysql.connect(host='127.0.0.1',port=sql_port,user='root'))
@@ -289,13 +289,14 @@ def main():
                 config=Config(connect_timeout=2,read_timeout=5,retries={'max_attempts':0},s3={'addressing_style':'path'}))
             wait(s3.list_buckets);s3.create_bucket(Bucket='quack-perf')
             fs=launch([str(Path(args.fs_server).resolve())],'fs',dict(clean,DRIVE9_TENANT_PROVIDER='local',
-                DRIVE9_LISTEN_ADDR=f'127.0.0.1:{fs_port}',
+                DRIVE9_LISTEN_ADDR=f'127.0.0.1:{fs_port}',DRIVE9_METRICS_LISTEN=f'127.0.0.1:{metrics_port}',
                 DRIVE9_LOCAL_DSN=f'root@tcp(127.0.0.1:{sql_port})/{database}?parseTime=true',
                 DRIVE9_TOKEN_SIGNING_KEY=secrets.token_hex(32),DRIVE9_MASTER_KEY=secrets.token_hex(32),
                 DRIVE9_S3_BUCKET='quack-perf',DRIVE9_S3_ENDPOINT=s3url,DRIVE9_S3_REGION='us-east-1',
                 DRIVE9_S3_FORCE_PATH_STYLE='true',DRIVE9_S3_ACCESS_KEY_ID=access,DRIVE9_S3_SECRET_ACCESS_KEY=secret,
                 DRIVE9_EXTENT_ALLOW_STATIC_CREDENTIALS='1'))
             endpoint=f'http://127.0.0.1:{fs_port}'
+            metrics_endpoint=f'http://127.0.0.1:{metrics_port}'
             wait(lambda:urllib.request.urlopen(endpoint+'/healthz',timeout=3).read())
             with urllib.request.urlopen(urllib.request.Request(endpoint+'/v1/provision',method='POST'),timeout=90) as response:
                 token=json.load(response)['api_key']
@@ -307,7 +308,9 @@ def main():
                 if os.environ.get('TIDBFS_BENCH_CLUSTER_TAG') and os.environ['TIDBFS_BENCH_CLUSTER_TAG'] in command and process.info['name'] in ('pd-server','tikv-server'):
                     service_pids[process.info['name']]=[process.pid]
             report['service_pids']=service_pids
-            (logs/'fs-metrics-ready.json').write_text(json.dumps(metrics(endpoint),indent=2))
+            initial_metrics=metrics(metrics_endpoint)
+            if not initial_metrics: raise RuntimeError('Dedicated FS metrics listener returned no counters')
+            (logs/'fs-metrics-ready.json').write_text(json.dumps(initial_metrics,indent=2))
             print('Disposable TiDB and RustFS services ready',flush=True)
 
             paths = {backend: str(Path(tmp)/'local.duckdb') if backend == 'local' else
@@ -396,7 +399,7 @@ def main():
                     pool=concurrent.futures.ThreadPoolExecutor(max_workers=n)
                     futures=[pool.submit(run_client,i) for i in range(n)]
                     ready.wait()
-                    before_metrics=metrics(endpoint)
+                    before_metrics=metrics(metrics_endpoint)
                     groups=dict(service_pids,worker=[owner.process.pid],clients=[os.getpid()] if args.client_driver=='python' else [c.process.pid for c in clients],driver=[] if args.client_driver=='python' else [os.getpid()])
                     (logs/'active-run.json').write_text(json.dumps({'name':name,'groups':groups}))
                     monitor=Monitor(groups)
@@ -410,7 +413,7 @@ def main():
                     elapsed=time.perf_counter()-started
                     resources=monitor.finish(elapsed)
                     pool.shutdown(wait=True)
-                    after_metrics=metrics(endpoint)
+                    after_metrics=metrics(metrics_endpoint)
                     delta={key:value-before_metrics.get(key,0) for key,value in after_metrics.items()
                         if value-before_metrics.get(key,0)!=0}
                     (logs/(name+'-metrics.json')).write_text(json.dumps(delta,indent=2))

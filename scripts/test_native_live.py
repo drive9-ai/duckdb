@@ -85,7 +85,7 @@ def main():
             env = {k: v for k, v in os.environ.items() if not k.startswith('DRIVE9_')}
             env.update(TZ='UTC', DUCKDB_AGENT_MODE='0', DRIVE9_TENANT_PROVIDER='local',
                        DRIVE9_TENANT_MAINTENANCE_INTERVAL='1s',
-                       DRIVE9_LISTEN_ADDR='127.0.0.1:' + str(fs_port),
+                       DRIVE9_LISTEN_ADDR='127.0.0.1:' + str(fs_port), DRIVE9_METRICS_LISTEN='off',
                        DRIVE9_LOCAL_DSN=f'root@tcp(127.0.0.1:{sql_port})/{live_db}?parseTime=true',
                        DRIVE9_S3_DIR=tmp + '/objects', DRIVE9_TOKEN_SIGNING_KEY=secrets.token_hex(32),
                        DRIVE9_MASTER_KEY=secrets.token_hex(32))
