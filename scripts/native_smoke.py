@@ -185,10 +185,13 @@ class NativeDatabaseTests(unittest.TestCase):
             def log_message(self, *args):
                 pass
 
+            def do_HEAD(self):
+                self.do_POST()
+
             def do_POST(self):
-                body = self.rfile.read(int(self.headers['Content-Length']))
+                body = self.rfile.read(int(self.headers.get('Content-Length', '0')))
                 op = self.headers.get('X-Drive9-Extent-Op')
-                request = urllib.request.Request(ENDPOINT + self.path, data=body, method='POST',
+                request = urllib.request.Request(ENDPOINT + self.path, data=body if body else None, method=self.command,
                     headers={'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json',
                              'X-Drive9-Extent-Op': op or ''})
                 try:
