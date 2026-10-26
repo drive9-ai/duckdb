@@ -58,6 +58,8 @@ jobs:
       DUCKDB_VERSION: v2.0.0
       DUCKDB_AGENT_MODE: '0'
       TIDBFS_GDB_ON_TIMEOUT: '1'
+      TIDBFS_STRACE_ON_TIMEOUT: '1'
+      TIDBFS_QUACK_TASK_TIMEOUT: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnostic_artifact_run != '' && '120' || '300' }}
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
       CCACHE_DIR: ${{ github.workspace }}/build/ccache
     steps:
@@ -127,7 +129,7 @@ jobs:
           source_dir="$RUNNER_TEMP/drive9-source"
           git init "$source_dir"
           git -C "$source_dir" remote add origin https://github.com/mem9-ai/drive9.git
-          git -C "$source_dir" fetch --depth=1 origin 31637ecfdfe6a935c8a91dea8a92616d051fc9d1
+          git -C "$source_dir" fetch --depth=1 origin 3890ee867bea5e4095874c92d5674859890d4e0e
           git -C "$source_dir" checkout --detach FETCH_HEAD
           tags=$(python3 -c 'import sys; sys.path.insert(0,"scripts"); from server_test_config import TAGS; print(TAGS)')
           CGO_ENABLED=0 go build -C "$source_dir" -mod=readonly -p=2 -tags "$tags" -o "$RUNNER_TEMP/drive9-server" ./cmd/drive9-server

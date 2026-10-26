@@ -223,6 +223,26 @@ class QuackTests(unittest.TestCase):
                 (root / 'object-requests.json').write_text(json.dumps(events, indent=2) + '\n')
             except (OSError, KeyError):
                 (root / 'object-capture-error.txt').write_text('Object request summary unavailable\n')
+        if os.environ.get('TIDBFS_STRACE_ON_TIMEOUT') == '1' and shutil.which('strace'):
+            worker = next((cli for cli in self.instances if cli.role.startswith('worker')), None)
+            if worker is not None:
+                # Raw send/receive arguments show only pointers and byte counts,
+                # never payloads, SQL, API keys or Authorization headers.
+                try:
+                    subprocess.run(['sudo', '-n', 'timeout', '35', 'strace', '-f', '-tt', '-T',
+                        '-e', 'trace=poll,ppoll,recvfrom,sendto,setsockopt,getsockopt',
+                        '-e', 'raw=recvfrom,sendto', '-p', str(worker.process.pid),
+                        '-o', str(root / 'worker-network.strace')],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, timeout=40)
+                    result = subprocess.run(['ss', '-tinp'], capture_output=True, text=True, timeout=5, check=False)
+                    # ss separates connections by a data line followed by its stats.
+                    lines = result.stdout.splitlines(); selected = []
+                    for index, line in enumerate(lines):
+                        if 'pid=' + str(worker.process.pid) + ',' in line:
+                            selected.extend(lines[index:index+2])
+                    (root / 'worker-sockets.txt').write_text('\n'.join(selected) + '\n')
+                except (OSError, subprocess.TimeoutExpired):
+                    (root / 'network-capture-error.txt').write_text('Network trace unavailable\n')
         if os.environ.get('TIDBFS_GDB_ON_TIMEOUT') == '1' and shutil.which('gdb'):
             targets = [cli for cli in self.instances if cli.role.startswith('worker')]
             if source is not None and source not in targets:
@@ -298,9 +318,15 @@ class QuackTests(unittest.TestCase):
             tasks = [pool.submit(read, client) for client in readers] + [pool.submit(write)]
             for task in tasks:
                 try:
-                    task.result(timeout=300)
+                    task.result(timeout=int(os.environ.get('TIDBFS_QUACK_TASK_TIMEOUT', '300')))
                 except TimeoutError:
                     self.capture_timeout()
+                    # Stop outstanding client loops before ThreadPoolExecutor's
+                    # context manager waits for them. Keep the captured worker
+                    # state, then let normal cleanup terminate the worker.
+                    for client in readers + [writer]:
+                        if client.process.poll() is None:
+                            client.kill()
                     raise
         self.assertEqual(writer.execute('SELECT count(*), sum(i) FROM commits;'), ['12,66'])
         # Closing the old worker must release all handles after concurrent
