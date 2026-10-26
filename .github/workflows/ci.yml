@@ -15,13 +15,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        async_tasks: ['default', '1']
+        async_threads: ['default', '1']
     env:
       DUCKDB_AGENT_MODE: '0'
       TIDBFS_QUACK_BACKEND: local
-      TIDBFS_QUACK_HTTP_ASYNC_TASKS: ${{ matrix.async_tasks }}
+      TIDBFS_QUACK_CLIENT_ASYNC_THREADS: ${{ matrix.async_threads }}
       TIDBFS_GDB_ON_TIMEOUT: '1'
-      TIDBFS_TEST_LOG_DIR: build/quack-local-${{ matrix.async_tasks }}
+      TIDBFS_TEST_LOG_DIR: build/quack-local-${{ matrix.async_threads }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install official DuckDB and Quack without tidbfs
@@ -43,8 +43,8 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
         with:
-          name: quack-local-${{ matrix.async_tasks }}-${{ github.run_id }}
-          path: build/quack-local-${{ matrix.async_tasks }}/
+          name: quack-local-${{ matrix.async_threads }}-${{ github.run_id }}
+          path: build/quack-local-${{ matrix.async_threads }}/
           retention-days: 7
   native-extension:
     runs-on: ubuntu-24.04

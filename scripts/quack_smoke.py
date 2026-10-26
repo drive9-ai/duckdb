@@ -183,8 +183,8 @@ class QuackTests(unittest.TestCase):
 
     def client(self):
         client = self.cli('client')
-        tasks = os.environ.get('TIDBFS_QUACK_HTTP_ASYNC_TASKS', 'default')
-        setting = '' if tasks == 'default' else f'SET http_async_tasks_per_thread={int(tasks)}; '
+        tasks = os.environ.get('TIDBFS_QUACK_CLIENT_ASYNC_THREADS', 'default')
+        setting = '' if tasks == 'default' else f'SET async_threads={int(tasks)}; '
         client.execute(f"LOAD {quote(QUACK)}; SET http_timeout=10; " + setting +
                        f"ATTACH {quote(self.address)} AS q (TOKEN {quote(self.token)}); CONNECT q; USE shared;")
         return client
