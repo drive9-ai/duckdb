@@ -55,14 +55,12 @@ All clients writing a live database must honor these advisory locks. An ordinary
 PUT or rename is not fenced by a database-specific lease. This is the existing
 filesystem contract, not mandatory enforcement against arbitrary other writers.
 
-The existing VFS performs random I/O, zero-filled holes, truncate, rename,
-unlink, block uploads and slice publication. Its writeback staging is disabled.
-The first adapter version syncs each write through VFS.Fsync before returning,
-and maps DuckDB FileSync to that same operation. This avoids whole-database
-uploads but adds synchronous flush overhead; write batching needs separate
-performance work and recovery validation. The C ABI currently marshals bounded
-1 MiB chunks through JSON/base64, adding copies inside the process. Object
-transfers retain the runtime's existing binary protocol.
+The C++ SDK performs positional I/O, zero-filled holes, truncate, rename,
+unlink, immutable block uploads and slice publication. There is no background
+writeback. A write returns only after object upload and metadata publication
+are acknowledged; FileSync waits behind preceding writes. Binary payloads pass
+directly through typed C++ buffers, while existing metadata messages remain JSON.
+Shared immutable blocks and coalesced downloads avoid extra cache copies.
 
 Metadata transport errors permanently fail that client session. Repeated
 metadata publication attempts from the runtime are blocked after an ambiguous

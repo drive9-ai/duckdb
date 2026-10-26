@@ -209,6 +209,20 @@ class QuackTests(unittest.TestCase):
             if cli.log_path.exists():
                 (root / cli.log_path.name).write_text(cli.redact(cli.log_path.read_text()))
         (root / 'commands.json').write_text(json.dumps(snapshots, indent=2) + '\n')
+        proxy = os.environ.get('TIDBFS_FAULT_PROXY')
+        if proxy:
+            try:
+                request = urllib.request.Request(proxy + '/_tidbfs_fault', headers={
+                    'Authorization': 'Bearer ' + os.environ['TIDBFS_FAULT_TOKEN']})
+                with urllib.request.urlopen(request, timeout=5) as response:
+                    events = json.load(response)['events']
+                # Object paths are unnecessary for throughput and latency diagnosis.
+                for event in events:
+                    event.pop('path', None)
+                    event['age_seconds'] = now - event.pop('started', now)
+                (root / 'object-requests.json').write_text(json.dumps(events, indent=2) + '\n')
+            except (OSError, KeyError):
+                (root / 'object-capture-error.txt').write_text('Object request summary unavailable\n')
         if os.environ.get('TIDBFS_GDB_ON_TIMEOUT') == '1' and shutil.which('gdb'):
             targets = [cli for cli in self.instances if cli.role.startswith('worker')]
             if source is not None and source not in targets:

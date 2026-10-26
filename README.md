@@ -119,14 +119,13 @@ namespace replacement as a database locking protocol. See the
 `tidbfs+db:///warehouse.duckdb` runs DuckDB's storage engine on the existing
 extent data plane. It addresses `/warehouse.duckdb` in the **same filesystem**
 as `/v1/fs/warehouse.duckdb`; its WAL is `/warehouse.duckdb.wal`. There is no
-separate volume, hidden `/data` mapping, new server endpoint, schema or feature
-flag. Ordinary listing and metadata APIs see these files.
+separate volume, hidden `/data` mapping, new server endpoint or schema migration.
+Ordinary listing and metadata APIs see these files.
 
-The C++ adapter calls a pinned, in-process drive9 extent client through
-a small in-process C ABI. That client already implements object blocks, caches,
-metadata sessions, POSIX locks and fsync. Metadata uses `/v1/extent/meta`,
-credentials use `/v1/data-credential`, and bytes use the existing object store.
-The extension reuses those implementations instead of rebuilding their protocol.
+The adapter links the pinned public drive9 C++ SDK directly. Metadata uses
+`/v1/extent/meta`, credentials use `/v1/data-credential`, and binary bytes use
+the existing object store. It reuses sessions, advisory locks, open references
+and immutable object layout; there is no Go bridge or language boundary.
 Use an unscoped filesystem token, as required by the existing extent API.
 
 ```sql
@@ -152,8 +151,8 @@ the existing session ID; servers advertising `session_guard: true` validate it i
 the same transaction as each metadata mutation, rejecting delayed old-session
 writes after cleanup. Older servers retain legacy behavior. Advisory locks still
 require cooperating clients.
-The initial write policy calls existing VFS fsync
-after each write before acknowledging it. This favors correctness over batching.
+Each write uploads immutable objects and waits for the existing metadata
+publication to succeed before acknowledging it. Sync waits for in-flight writes.
 Directory creation negotiates the generic `directory_projection` capability
 and uses optional `mknod.create_projection`; its default preserves existing
 Go/FUSE clients. See [setup, recovery behavior and live tests](docs/native-database.md).
