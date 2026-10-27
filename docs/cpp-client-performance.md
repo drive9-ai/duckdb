@@ -158,9 +158,9 @@ caches were not purged. It is not a cold-storage, WAN, Linux performance or
 production object-store failure certification.
 
 [All configurations and latencies](benchmarks/2026-10-26-cpp-client/summary.csv),
-[raw samples, metrics and reproduction scripts](benchmarks/2026-10-26-cpp-client/quack-cpp-client-results.zip),
 and [exact artifact provenance](benchmarks/2026-10-26-cpp-client/results.json)
-are retained. The earlier [Go bridge report](read-performance.md) remains
+are retained. Raw metrics containing run-specific identifiers are not distributed.
+The earlier [Go bridge report](read-performance.md) remains
 historical evidence.
 
 The original full validation and timed runs used SDK `be5784c0`; rebuilding
