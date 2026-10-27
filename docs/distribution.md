@@ -18,8 +18,8 @@ The Makefile defaults `DUCKDB_VERSION` to `v2.0.0` so local release artifacts
 carry the same ABI version as the official CLI, rather than a development hash.
 
 ```sh
-git clone --recurse-submodules https://github.com/siddontang/duckdb-tidbfs.git
-cd duckdb-tidbfs
+git clone --recurse-submodules https://github.com/drive9-ai/duckdb.git
+cd duckdb
 # Install a C++17 compiler, CMake, make, pkg-config and Python 3.10+ first.
 make setup-vcpkg
 export VCPKG_TOOLCHAIN_PATH="$PWD/vcpkg/scripts/buildsystems/vcpkg.cmake"
@@ -59,7 +59,7 @@ community repository builds and signs an accepted submission.
 
 Submit `extensions/tidbfs/description.yml` to
 <https://github.com/duckdb/community-extensions>. It records the MIT license,
-maintainer `siddontang`, version `0.4.0`, the supported platforms and a fixed
+maintainer `qiffang`, version `0.4.0`, the supported platforms and a fixed
 source commit from this public repository. Use the same exclusions and vcpkg
 revision as `.github/workflows/distribution.yml`. Include configuration examples
 and the experimental native database/advisory-lock limits in its documentation.

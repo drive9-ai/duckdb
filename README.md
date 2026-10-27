@@ -1,6 +1,6 @@
-# duckdb-tidbfs
+# Drive9 DuckDB extension
 
-[![CI](https://github.com/siddontang/duckdb-tidbfs/actions/workflows/ci.yml/badge.svg)](https://github.com/siddontang/duckdb-tidbfs/actions/workflows/ci.yml)
+[![CI](https://github.com/drive9-ai/duckdb/actions/workflows/ci.yml/badge.svg)](https://github.com/drive9-ai/duckdb/actions/workflows/ci.yml)
 
 `tidbfs` is a C++ DuckDB filesystem extension for reading and writing analytics files over the
 TiDB Filesystem HTTP data plane, with experimental native `.duckdb` storage. It works in the DuckDB CLI and does not require
@@ -23,8 +23,8 @@ It calls the existing HTTP APIs directly and includes no Go bridge or Go runtime
 For Homebrew DuckDB on Apple Silicon:
 
 ```sh
-git clone --recurse-submodules https://github.com/siddontang/duckdb-tidbfs.git
-cd duckdb-tidbfs
+git clone --recurse-submodules https://github.com/drive9-ai/duckdb.git
+cd duckdb
 make build
 duckdb -unsigned
 ```
