@@ -7,6 +7,98 @@ TiDB Filesystem HTTP data plane, with experimental native `.duckdb` storage. It 
 Python, fsspec, FUSE, or downloading whole Parquet files. Python is used only by
 the build and test scripts.
 
+## Get a TiDB Cloud Filesystem token
+
+The extension's `TOKEN` setting takes a **filesystem token** (`fs_token`).
+TiDB Cloud API public/private keys are used to manage filesystem resources;
+they are not the token to put in a DuckDB secret. Obtain an **owner token** to
+run all examples below, including native database and extent-file access.
+
+### Create a filesystem in the console
+
+1. Sign in to the [TiDB Cloud console](https://tidbcloud.com/), select your
+   organization, and open **File Systems**.
+2. Click **Create File System**, choose a name, cloud provider and region, then
+   click **Create**.
+3. In **Your File System is Ready!**, save the owner token shown as
+   `TI_FS_TOKEN` in the connection instructions, and record the filesystem's
+   region. DuckDB connects directly over HTTP, so you can skip mounting.
+
+The token is shown only once. Reopening **Connect** does not recover it.
+For an existing filesystem whose owner token you no longer have, generate
+another owner token with the CLI below. See the official
+[console quick start](https://docs.pingcap.com/tidbcloud-filesystem/filesystem-quick-start-console/).
+
+### Generate an owner token with the CLI
+
+[Install TiDB Cloud CLI (`ti`)](https://docs.pingcap.com/ai/ti-install-configure-update/),
+then obtain an **Organization Owner** API key pair from
+[TiDB Cloud API Keys](https://tidbcloud.com/org-settings/api-keys).
+Run `ti configure` and enter the key pair and your filesystem's region.
+
+Find the existing filesystem's ID in the console or with:
+
+```sh
+ti fs list-file-systems --region aws-us-west-2
+```
+
+If you have not created a filesystem, use this command instead; it returns
+`file_system_id`, `fs_token` and `region_code`, and stores the initial owner
+token locally for CLI use:
+
+```sh
+ti fs create-file-system --display-name duckdb --region aws-us-west-2 --wait
+```
+
+To issue a separate, time-limited owner token for DuckDB, replace the ID and
+region below with your filesystem's values. This Bash/Zsh example saves the
+plaintext outside the repository and checks access without printing the token:
+
+```sh
+umask 077
+token_dir="$(mktemp -d)"
+ti fs generate-file-system-token \
+  --file-system-id '<file-system-id>' \
+  --region aws-us-west-2 \
+  --token-name duckdb \
+  --ttl 24h \
+  --query fs_token --output text > "$token_dir/fs-token"
+
+export TI_FS_TOKEN="$(cat "$token_dir/fs-token")"
+ti fs check-file-system --region aws-us-west-2
+```
+
+The generated token expires after 24 hours; choose a lifetime appropriate for
+your workload. `--query fs_token --output text` extracts the token itself,
+not the JSON response or token ID. Save it in your secret manager before
+removing the temporary file. Creation is the only opportunity to retrieve its
+plaintext; listing tokens later returns metadata. See
+[token management](https://docs.pingcap.com/tidbcloud-filesystem/manage-filesystem-tokens/)
+for rotation and revocation.
+
+### Use the token in DuckDB
+
+In `CREATE TEMPORARY SECRET` below, set `TOKEN` to the saved plaintext, without
+a `Bearer ` prefix. Set `ENDPOINT` to the data-plane URL for the filesystem's
+region: for example, `https://aws-us-west-2.drive9.ai` for `aws-us-west-2`.
+See the official [region-to-endpoint mapping](https://docs.pingcap.com/tidbcloud-filesystem/filesystem-sdks/).
+Do not append `/v1/fs` or a filesystem ID. The token identifies the filesystem;
+`https://api.drive9.ai` does not accept TiDB Cloud Filesystem tokens.
+
+The extension does not read `ti`'s credential store or `TI_FS_TOKEN`
+automatically; supply the token explicitly in the DuckDB secret. Keep tokens
+out of committed SQL files and shell history; for automation, inject them from
+a secret manager and pass SQL through stdin.
+
+For access limited to ordinary analytical files, the console's **Access Tokens
+→ Create Token** flow issues a scoped token: select the required path,
+permissions and expiration. Reading files and globs needs `read` and `list`;
+add `write` for uploads and `delete` for deletion or rename workflows.
+Native database mode and existing extent-layout files require an **unscoped
+owner token**. A scoped token with path `/` and all permissions is still scoped.
+DuckDB's `SCOPE` secret option selects which URIs use a secret; it does not
+change the token's server-side permissions.
+
 ## Build and query
 
 For the official two-platform build and publication tests, see
@@ -47,7 +139,7 @@ LOAD 'build/tidbfs.duckdb_extension';
 CREATE TEMPORARY SECRET fs (
     TYPE tidbfs,
     ENDPOINT 'https://YOUR_FILESYSTEM_ENDPOINT',
-    TOKEN 'YOUR_FILESYSTEM_API_KEY',
+    TOKEN 'YOUR_FILESYSTEM_TOKEN',
     SCOPE 'tidbfs:///'
 );
 
@@ -137,7 +229,7 @@ Use an unscoped filesystem token, as required by the existing extent API.
 
 ```sql
 CREATE SECRET fs (TYPE tidbfs, ENDPOINT 'https://YOUR_FILESYSTEM_ENDPOINT',
-                  TOKEN 'YOUR_FILESYSTEM_API_KEY');
+                  TOKEN 'YOUR_FILESYSTEM_TOKEN');
 ATTACH 'tidbfs+db:///warehouse.duckdb' AS warehouse;
 CREATE TABLE warehouse.items AS SELECT * FROM range(100);
 CHECKPOINT warehouse;
