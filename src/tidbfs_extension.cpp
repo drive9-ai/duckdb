@@ -9,6 +9,14 @@
 #include "duckdb/main/client_context_state.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/main/secret/secret_manager.hpp"
+#include "duckdb/main/attached_database.hpp"
+#include "duckdb/main/database_manager.hpp"
+#include "duckdb/main/client_context_file_opener.hpp"
+#include "duckdb/main/valid_checker.hpp"
+#include "duckdb/storage/storage_manager.hpp"
+#include "duckdb/transaction/duck_transaction.hpp"
+#include "duckdb/transaction/duck_transaction_manager.hpp"
+#include "duckdb/function/table_function.hpp"
 #include "json.hpp"
 #include "drive9/client.hpp"
 
@@ -44,7 +52,7 @@ constexpr idx_t MAX_LIST = 16 * 1024 * 1024;
 // DuckDB's local JoinPath collapses the slashes when constructing a temporary
 // sibling of a file in a URI's root (scheme:///file -> scheme:/tmp_file).
 string NormalizeURI(const string &uri) {
-	for (const string &scheme : {string("tidbfs"), string("tidbfs+db")}) {
+	for (const string &scheme : {string("tidbfs"), string("tidbfs+db"), string("tidbfs+snapshot")}) {
 		auto prefix = scheme + ":/";
 		if (uri.compare(0, prefix.size(), prefix) == 0 &&
 		    (uri.size() == prefix.size() || uri[prefix.size()] != '/')) {
@@ -1218,6 +1226,7 @@ unique_ptr<BaseSecret> CreateTiDBSecret(ClientContext &, CreateSecretInput &inpu
 	if (scope.empty()) {
 		scope.push_back("tidbfs://");
 		scope.push_back("tidbfs+db://");
+		scope.push_back("tidbfs+snapshot://");
 	}
 	auto secret = make_uniq<KeyValueSecret>(scope, input.type, input.provider, input.name);
 	if (!secret->TrySetValue("endpoint", input) || !secret->TrySetValue("token", input)) {
@@ -1265,6 +1274,7 @@ void LoadTiDBFS(ExtensionLoader &loader) {
 			    throw InvalidInputException("tidbfs_heartbeat_ms must be between 1000 and 600000");
 	    }, SetScope::GLOBAL);
 	auto clients = std::make_shared<ExtentClients>();
+	RegisterTiDBPublish(loader, clients);
 	FileSystem::GetFileSystem(loader.GetDatabaseInstance()).RegisterSubSystem(make_uniq<TiDBFileSystem>(clients));
 	FileSystem::GetFileSystem(loader.GetDatabaseInstance()).RegisterSubSystem(make_uniq<TiDBDatabaseFileSystem>(clients));
 }

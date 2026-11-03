@@ -189,6 +189,7 @@ flush/close, worker startup, reopen, and client-cold/warm query timings.
 | `EXPORT DATABASE` / `IMPORT DATABASE` | Supported; data and SQL scripts are remote |
 | SQL DDL, DML and transactions in a local/in-memory database | Normal DuckDB behavior; import/export connects it to remote files |
 | Writable `ATTACH 'tidbfs+db:///database.duckdb'` | Experimental: native database, WAL, checkpoint and recovery over existing extent storage |
+| One native writer with independent snapshot readers | Experimental: `tidbfs_publish` + read-only `tidbfs+snapshot:///`; explicit publication and refresh |
 | Writable native database on ordinary `tidbfs:///` | Use `tidbfs+db:///` to select extent I/O and database locking; both address the same filesystem |
 | Multi-file atomic export, rollback of external files | Not provided |
 
@@ -240,8 +241,9 @@ route their I/O through this adapter. New ordinary analytical output still uses
 revision-checked PUT/multipart. Native mode accepts arbitrary filenames; the
 `.duckdb` suffix is a convention, not a server rule.
 
-Locks are the existing **advisory inode locks**: one database writer or shared
-readers, with cooperating clients. Ordinary clients that ignore locks must not
+Locks on the live inode are the existing **advisory inode locks**: one database
+writer or shared readers, with cooperating clients. Independent readers can
+instead pin a published checkpoint as described below. Ordinary clients that ignore locks must not
 replace a live database or its WAL. The adapter stops after an ambiguous metadata
 response or a missed session deadline; it never reacquires ownership under an
 already-open DuckDB instance. Metadata requests are bounded and late successful
@@ -275,6 +277,42 @@ can recover, using the filesystem's existing storage machinery. Queries execute
 locally. This adds neither distributed SQL execution nor concurrent database
 writer processes. Extent performance and failure behavior still require broader
 production validation; it is not a claim of complete DuckDB compatibility.
+
+## One writer and independent native readers (experimental)
+
+The writer can publish a consistent checkpoint while staying open. Each reader
+runs its own DuckDB process and SQL over a pinned version of the same logical
+database. Object blocks are shared; publishing copies only extent metadata.
+
+```sql
+-- Writer: extension and an unscoped tidbfs secret are already loaded.
+ATTACH 'tidbfs+db:///warehouse.duckdb' AS warehouse;
+CREATE TABLE warehouse.events AS SELECT * FROM range(1000);
+CALL tidbfs_publish('warehouse'); -- returns reader_uri and generation
+-- Continue committing and publishing new versions as needed.
+```
+
+```sql
+-- Each independent reader: load the extension and the same filesystem secret.
+ATTACH 'tidbfs+snapshot:///warehouse.duckdb' AS warehouse (READ_ONLY);
+SELECT count(*) FROM warehouse.events;
+
+-- Refresh explicitly, outside an active transaction/query on this attachment.
+DETACH warehouse;
+ATTACH 'tidbfs+snapshot:///warehouse.duckdb' AS warehouse (READ_ONLY);
+```
+
+One ATTACH pins both catalog and data until DETACH. A COMMIT does not publish a
+reader version; `tidbfs_publish` checkpoints committed state and atomically
+replaces the published generation. An already attached reader stays on its old
+version, even after COMMIT/ROLLBACK or writer takeover. It never replays the live
+writer's WAL. Before the first publication, snapshot ATTACH fails.
+
+Requires a server advertising `clone_v1` and `session_guard`. Published metadata
+uses the reserved ordinary extent sidecar `/warehouse.duckdb.tidbfs-snapshot`;
+do not mutate or replace it through other clients. Old generations retain shared
+blocks while readers hold them. Names ending in `.wal` cannot be published.
+See [consistency, refresh, retention, limits and failure tests](docs/native-readers-design.md).
 
 ## Quack SQL clients over shared storage
 

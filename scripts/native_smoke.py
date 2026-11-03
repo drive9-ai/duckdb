@@ -49,6 +49,14 @@ def sql(statement, fail=False, endpoint=ENDPOINT, timeout=180, extension=None):
 
 
 class NativeDatabaseTests(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get('TIDBFS_EXPECT_LEGACY_CAPABILITY'), 'requires the pinned legacy server')
+    def test_snapshot_capability_required(self):
+        error = sql(self.attach + "CREATE TABLE t AS SELECT 42 n; CALL tidbfs_publish('remote');", fail=True)
+        self.assertIn('clone_v1', error)
+        snapshot = self.uri.replace('tidbfs+db:', 'tidbfs+snapshot:')
+        self.assertIn('clone_v1', sql(f'ATTACH {quote(snapshot)} AS remote (READ_ONLY);', fail=True))
+        self.assertTrue(sql(self.readonly + 'SELECT n FROM t;').endswith('42'))
+
     @unittest.skipUnless(os.environ.get('TIDBFS_INTEROP_EXTENSION'), 'requires an independently built prior client extension')
     def test_prior_client_file_format_interoperability(self):
         prior = Path(os.environ['TIDBFS_INTEROP_EXTENSION']).resolve()

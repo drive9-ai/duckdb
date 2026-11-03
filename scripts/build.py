@@ -93,6 +93,11 @@ def main():
     command = [os.environ.get("CXX", "c++"), "-std=c++17", "-O2", "-DNDEBUG", "-fPIC", "-Wall", "-Wextra",
                "-Wno-unused-parameter", "-Wno-deprecated-declarations", "-I" + str(includes), "-I" + str(deps), "-I" + str(sdk / "include")]
     command += ["-dynamiclib", "-undefined", "dynamic_lookup"]
+    # Native checkpoint headers include DuckDB's bundled fmt headers. Source
+    # checkouts keep these alongside src; packaged SDKs may include them already.
+    bundled_fmt = includes.parent.parent / "third_party/fmt/include"
+    if bundled_fmt.is_dir():
+        command += ["-I" + str(bundled_fmt)]
     command += shlex.split(os.environ.get("CXXFLAGS", ""))
     command += [str(ROOT / "src/tidbfs_extension.cpp"), "-o", str(output)]
     command += [str(sdk_build / "libdrive9_cpp.a"), str(sdk_build / "_deps/utf8proc-build/libutf8proc.a"),
