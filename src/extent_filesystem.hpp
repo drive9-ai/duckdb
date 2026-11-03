@@ -39,7 +39,16 @@ struct ExtentClient {
 				options.truncate = request.value("truncate", false);
 				auto lock = request.value("lock", "");
 				options.lock = lock == "read" ? drive9::Lock::Shared : lock == "write" ? drive9::Lock::Exclusive : drive9::Lock::None;
-				auto id = fs->Open(request.at("path"), options);
+				uint64_t id;
+				try {
+					id = fs->Open(request.at("path"), options);
+				} catch (const drive9::Error &error) {
+					// Preserve nullable, non-creating opens without a duplicate lookup.
+					// The SDK unwinds any acquired lock/reference before throwing.
+					if (error.code == 2 && request.value("null_if_missing", false))
+						return {{"exists", false}};
+					throw;
+				}
 				auto info = Info(fs->Info(id)); info["handle"] = id; return info;
 			}
 			if (op == "close") fs->Close(handle);
@@ -153,22 +162,32 @@ class TiDBDatabaseFileSystem : public FileSystem {
 
 	unique_ptr<ExtentHandle> OpenExtent(const string &path, FileOpenFlags flags, std::shared_ptr<ExtentClient> c) {
 		auto p = ExtentPath(path);
-		auto info = c->Call({{"op", "stat"}, {"path", p}});
-		bool exists = info.at("exists").get<bool>();
-		if ((!exists && flags.ReturnNullIfNotExists()) || (exists && flags.ReturnNullIfExists()))
-			return nullptr;
+		// Open already resolves the path and validates existence in the SDK.
+		// Nullable creation/overwrite still needs a preflight: Open would create
+		// the missing file instead of returning null. NULL_IF_EXISTS also needs it.
+		// Never reuse this observation for locking or the post-lock file size.
+		auto create = flags.CreateFileIfNotExists() || flags.OverwriteExistingFile();
+		if ((flags.ReturnNullIfNotExists() && create) || flags.ReturnNullIfExists()) {
+			auto info = c->Call({{"op", "stat"}, {"path", p}});
+			bool exists = info.at("exists").get<bool>();
+			if ((!exists && flags.ReturnNullIfNotExists()) || (exists && flags.ReturnNullIfExists()))
+				return nullptr;
+		}
 		string lock;
 		if (flags.Lock() == FileLockType::READ_LOCK)
 			lock = "read";
 		if (flags.Lock() == FileLockType::WRITE_LOCK)
 			lock = "write";
-		info = c->Call({{"op", "open"},
+		auto info = c->Call({{"op", "open"},
 						{"path", p},
+						{"null_if_missing", flags.ReturnNullIfNotExists() && !create},
 						{"write", flags.OpenForWriting()},
 						{"create", flags.CreateFileIfNotExists() || flags.OverwriteExistingFile()},
 						{"exclusive", flags.ExclusiveCreate()},
 						{"truncate", flags.OverwriteExistingFile()},
 						{"lock", lock}});
+		if (!info.at("exists").get<bool>())
+			return nullptr;
 		return make_uniq<ExtentHandle>(*this, path, flags, std::move(c), info);
 	}
 

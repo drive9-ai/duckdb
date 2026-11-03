@@ -49,6 +49,23 @@ def sql(statement, fail=False, endpoint=ENDPOINT, timeout=180, extension=None):
 
 
 class NativeDatabaseTests(unittest.TestCase):
+    def test_attach_credential_rotation_and_isolation(self):
+        sql(self.attach + 'CREATE TABLE credential_guard AS SELECT 42 n; CHECKPOINT;')
+        other_token = 'fixture-invalid-token'
+        # An invalid effective credential must not inherit the cached client's
+        # authenticated session. Restore the original credential in this process.
+        statement = (INIT + self.readonly + 'SELECT n FROM credential_guard; USE memory; DETACH remote; '
+                     f'CREATE OR REPLACE SECRET fs (TYPE tidbfs, ENDPOINT {quote(ENDPOINT)}, TOKEN {quote(other_token)}); '
+                     + self.readonly + "\nSELECT 'isolation_boundary';\n"
+                     f'CREATE OR REPLACE SECRET fs (TYPE tidbfs, ENDPOINT {quote(ENDPOINT)}, TOKEN {quote(TOKEN)}); '
+                     + self.readonly + 'SELECT n FROM credential_guard;')
+        result = subprocess.run([DUCKDB, '-unsigned', '-csv', '-noheader'], input=statement.replace('; ', ';\n'),
+                                text=True, capture_output=True, timeout=120)
+        # The rotated credential is rejected; both authenticated reads survive.
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout.strip().splitlines(), ['true', '42', 'true', 'isolation_boundary', 'true', '42'])
+        self.assertTrue('rejected' in result.stderr, 'Rotated credential should be rejected')
+
     @unittest.skipUnless(os.environ.get('TIDBFS_INTEROP_EXTENSION'), 'requires an independently built prior client extension')
     def test_prior_client_file_format_interoperability(self):
         prior = Path(os.environ['TIDBFS_INTEROP_EXTENSION']).resolve()

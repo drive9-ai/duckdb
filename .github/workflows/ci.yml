@@ -154,6 +154,7 @@ jobs:
           # private checkout is unavailable to this public repository's CI;
           # the public upstream server has older stale-session scheduling.
           python3 scripts/test_native_live.py --tidb-server "$RUNNER_TEMP/tidb/tidb-server" --fs-server "$RUNNER_TEMP/drive9-server" --rustfs-server "$RUNNER_TEMP/rustfs" --skip-restart \
+            NativeDatabaseTests.test_attach_credential_rotation_and_isolation \
             NativeDatabaseTests.test_catalog_transactions_checkpoint_reopen \
             NativeDatabaseTests.test_multiple_databases_and_arbitrary_filename \
             NativeDatabaseTests.test_extent_files_share_the_normal_namespace \
@@ -170,6 +171,13 @@ jobs:
             NativeDatabaseTests.test_s3_successful_upload_with_lost_ack_is_safe_to_retry \
             NativeDatabaseTests.test_s3_transient_download_failure_recovers_in_fresh_process \
             NativeDatabaseTests.test_s3_truncated_download_never_returns_partial_query_results
+      - name: Measure cold and warm native attach with disposable services
+        run: |
+          python3 scripts/test_native_live.py --tidb-server "$RUNNER_TEMP/tidb/tidb-server" --fs-server "$RUNNER_TEMP/drive9-server" --rustfs-server "$RUNNER_TEMP/rustfs" --attach-benchmark --bench-samples 3 --log-dir build/attach-benchmark
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-attach-attribution
+          path: build/attach-benchmark/attach-*.json
       - name: Quack multi-client transactions, object faults and clean worker handoff
         run: |
           # Crash/partition/ambiguous-write takeover needs current tidbcloud/fs.
