@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -12,6 +13,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   quack-http-control:
@@ -56,6 +61,7 @@ jobs:
     timeout-minutes: 45
     env:
       DUCKDB_VERSION: v2.0.0
+      TIDBFS_EXPECT_LEGACY_CAPABILITY: '1'
       DUCKDB_AGENT_MODE: '0'
       TIDBFS_GDB_ON_TIMEOUT: '1'
       TIDBFS_STRACE_ON_TIMEOUT: '1'
@@ -155,6 +161,7 @@ jobs:
           # the public upstream server has older stale-session scheduling.
           python3 scripts/test_native_live.py --tidb-server "$RUNNER_TEMP/tidb/tidb-server" --fs-server "$RUNNER_TEMP/drive9-server" --rustfs-server "$RUNNER_TEMP/rustfs" --skip-restart \
             NativeDatabaseTests.test_catalog_transactions_checkpoint_reopen \
+            NativeDatabaseTests.test_snapshot_capability_required \
             NativeDatabaseTests.test_multiple_databases_and_arbitrary_filename \
             NativeDatabaseTests.test_extent_files_share_the_normal_namespace \
             NativeDatabaseTests.test_temporary_extent_copy_replaces_both_namespace_views \

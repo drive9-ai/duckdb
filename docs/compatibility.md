@@ -37,8 +37,11 @@ partition, ambiguous-write and worker-handoff suite described in [Quack](quack.m
 
 ## Boundaries
 
-- Native mode is single writer or shared read-only processes. It does not add
-  simultaneous database writer processes or distributed query execution.
+- The live native inode is single writer or shared read-only processes.
+  `tidbfs_publish` additionally supports independent read-only checkpoint
+  attachments while the writer stays open. Readers pin a version until DETACH;
+  publication and refresh are explicit. See [snapshot readers](native-readers-design.md).
+  This does not add simultaneous database writer processes or distributed SQL.
 - Existing locks are advisory. Other writers must cooperate; ordinary API
   clients must not replace a live database or its WAL.
 - The client fails closed after transport ambiguity, metadata timeout, or missed

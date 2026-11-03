@@ -45,7 +45,10 @@ unscoped filesystem token. DuckDB secret scopes only control client routing.
 ## Locking, durability and failures
 
 DuckDB's lock flags map to existing whole-file POSIX `setlk` locks with a stable
-handle owner. Multiple readers can hold shared locks; a writer excludes them.
+handle owner. Multiple readers of the live inode can hold shared locks; a writer excludes them.
+For simultaneous independent readers while the writer stays open, use
+[published checkpoint attachments](native-readers-design.md), which retain
+their own extent inode and share immutable object blocks with the live database.
 Analytical reads on either URI also acquire an existing shared lock even when
 DuckDB requests `NO_LOCK`. The same query shares one pinned open inode across
 its row-group handles and both URI spellings; query completion or failure

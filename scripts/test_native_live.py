@@ -45,6 +45,8 @@ def main():
     parser.add_argument('--fs-server', required=True)
     parser.add_argument('--fs-source', help='Also run relevant Go tests in this fs checkout')
     parser.add_argument('--skip-restart', action='store_true')
+    parser.add_argument('--snapshots', action='store_true', help='Run independent native snapshot readers (requires clone_v1 server)')
+    parser.add_argument('--snapshot-concurrency-bin', help='Also run the native multi-connection checkpoint test')
     parser.add_argument('--quack', action='store_true', help='Also run the multi-client Quack integration suite')
     parser.add_argument('--quack-only', action='store_true', help='Run Quack integration instead of native_smoke.py')
     parser.add_argument('--log-dir', default=str(ROOT / 'build/native-live'))
@@ -117,6 +119,12 @@ def main():
                            DRIVE9_EXTENT_ALLOW_STATIC_CREDENTIALS='1',
                            TIDBFS_OBJECT_ENDPOINT=proxy.url,
                            TIDBFS_FAULT_PROXY=proxy.url, TIDBFS_FAULT_TOKEN=proxy.token)
+                if args.snapshots:
+                    # Current FS mints scoped STS sessions; it never hands out
+                    # the server's static keys. Exercise that path with RustFS.
+                    env.pop('DRIVE9_EXTENT_ALLOW_STATIC_CREDENTIALS', None)
+                    env.update(AWS_ENDPOINT_URL_STS=rustfs_url,
+                               DRIVE9_EXTENT_S3_ROLE_ARN='arn:aws:iam::123456789012:role/disposable-extent')
                 print('Disposable RustFS S3 backend ready', flush=True)
             server_command = [str(Path(args.fs_server).resolve())]
             server = launch(server_command, 'server', env)
@@ -150,13 +158,19 @@ def main():
             cpp_env = env.copy()
             if os.environ.get('DRIVE9_CPP_SOURCE'):
                 cpp_env['DRIVE9_CPP_SOURCE'] = os.environ['DRIVE9_CPP_SOURCE']
-            subprocess.run(['python3', 'scripts/test_cpp.py', '--live'], cwd=ROOT, env=cpp_env, check=True)
-            if not args.quack_only:
+            if args.snapshots:
+                subprocess.run(['python3', 'scripts/snapshot_smoke.py'] + args.tests, cwd=ROOT, env=env, check=True)
+                if args.snapshot_concurrency_bin:
+                    subprocess.run([str(Path(args.snapshot_concurrency_bin).resolve()), str(ROOT / 'build/tidbfs.duckdb_extension')],
+                                   cwd=ROOT, env=env, check=True, timeout=180)
+            else:
+                subprocess.run(['python3', 'scripts/test_cpp.py', '--live'], cwd=ROOT, env=cpp_env, check=True)
+            if not args.quack_only and not args.snapshots:
                 subprocess.run(['python3', 'scripts/native_smoke.py'] + args.tests, cwd=ROOT, env=env, check=True)
             if args.quack or args.quack_only:
                 subprocess.run(['python3', 'scripts/quack_smoke.py'] + (args.tests if args.quack_only else []),
                                cwd=ROOT, env=env, check=True)
-            if not args.skip_restart and not args.quack_only:
+            if not args.skip_restart and not args.quack_only and not args.snapshots:
                 # Acknowledge a transaction without checkpointing, kill both the
                 # writer and fs server, then restart fs over the same TiDB state.
                 def quote(value):

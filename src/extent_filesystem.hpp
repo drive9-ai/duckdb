@@ -1,6 +1,20 @@
 // Thin DuckDB adapter over the public, standalone drive9 C++ HTTP client.
+bool SnapshotURI(const string &input) {
+	return NormalizeURI(input).compare(0, 19, "tidbfs+snapshot:///") == 0;
+}
+string SnapshotSource(const string &input) {
+	return Path("tidbfs://" + NormalizeURI(input).substr(18));
+}
+string SnapshotTarget(const string &source) { return source + ".tidbfs-snapshot"; }
+bool SnapshotWAL(const string &input) {
+	return SnapshotURI(input) && StringUtil::EndsWith(SnapshotSource(input), ".wal");
+}
+void RequireMutableURI(const string &path) {
+	if (SnapshotURI(path)) throw IOException("Published snapshots are read only; write through tidbfs+db:///");
+}
 string ExtentPath(const string &input) {
 	auto uri = NormalizeURI(input);
+	if (SnapshotURI(uri)) return SnapshotTarget(SnapshotSource(uri));
 	if (uri.compare(0, 13, "tidbfs+db:///") == 0)
 		return Path("tidbfs://" + uri.substr(12));
 	return Path(uri);
@@ -63,10 +77,22 @@ struct ExtentClient {
 
 // Both URI routes belong to one DuckDB instance. Share session ownership and
 // enforce its heartbeat setting even when another endpoint/credential is used.
+struct WriterHandle {
+	std::mutex mu;
+	ExtentHandle *handle = nullptr;
+};
 struct ExtentClients {
 	std::mutex mu;
 	std::map<std::pair<string, string>, std::shared_ptr<ExtentClient>> clients;
 	int64_t heartbeat_ms = 0;
+	std::map<std::pair<ExtentClient *, string>, std::weak_ptr<WriterHandle>> writers;
+	std::shared_ptr<WriterHandle> Writer(const std::shared_ptr<ExtentClient> &client, const string &path) {
+		std::lock_guard<std::mutex> lock(mu);
+		auto key = std::make_pair(client.get(), ExtentPath(path));
+		auto state = writers[key].lock();
+		if (!state) { state = std::make_shared<WriterHandle>(); writers[key] = state; }
+		return state;
+	}
 	std::shared_ptr<ExtentClient> Get(const Config &config) {
 		std::lock_guard<std::mutex> lock(mu);
 		if (heartbeat_ms && heartbeat_ms != config.heartbeat_ms)
@@ -86,6 +112,7 @@ struct ExtentHandle : FileHandle {
 	bool closed = false;
 	std::shared_mutex mu;
 	std::shared_ptr<ExtentHandle> read_pin;
+	std::shared_ptr<WriterHandle> writer;
 	ExtentHandle(FileSystem &fs, const string &path, FileOpenFlags flags, std::shared_ptr<ExtentClient> c,
 				 const nlohmann::json &info)
 		: FileHandle(fs, path, flags), client(std::move(c)), handle(uint64_t(JSONNumber(info, "handle"))),
@@ -102,10 +129,13 @@ struct ExtentHandle : FileHandle {
 		}
 	}
 	void Close() override {
+		std::unique_lock<std::mutex> writer_lock;
+		if (writer) writer_lock = std::unique_lock<std::mutex>(writer->mu);
 		std::unique_lock<std::shared_mutex> lock(mu);
 		if (closed)
 			return;
 		closed = true;
+		if (writer) writer->handle = nullptr;
 		if (read_pin)
 			read_pin.reset();
 		else
@@ -148,6 +178,7 @@ class TiDBDatabaseFileSystem : public FileSystem {
 		return clients->Get(ReadConfig(opener, path));
 	}
 	nlohmann::json Stat(const string &path, optional_ptr<FileOpener> opener) {
+		if (SnapshotWAL(path)) return {{"exists", false}, {"directory", false}};
 		return Client(path, opener)->Call({{"op", "stat"}, {"path", ExtentPath(path)}});
 	}
 
@@ -169,17 +200,50 @@ class TiDBDatabaseFileSystem : public FileSystem {
 						{"exclusive", flags.ExclusiveCreate()},
 						{"truncate", flags.OverwriteExistingFile()},
 						{"lock", lock}});
-		return make_uniq<ExtentHandle>(*this, path, flags, std::move(c), info);
+		auto handle = make_uniq<ExtentHandle>(*this, path, flags, c, info);
+		if (flags.Lock() == FileLockType::WRITE_LOCK && flags.OpenForWriting()) {
+			handle->writer = clients->Writer(c, path);
+			std::lock_guard<std::mutex> lock(handle->writer->mu);
+			handle->writer->handle = handle.get();
+		}
+		return handle;
 	}
 
   public:
 	explicit TiDBDatabaseFileSystem(std::shared_ptr<ExtentClients> clients) : clients(std::move(clients)) { }
 	string GetName() const override { return "tidbfs_extent"; }
-	bool CanHandleFile(const string &path) override { return NormalizeURI(path).compare(0, 13, "tidbfs+db:///") == 0; }
+	bool CanHandleFile(const string &path) override {
+		return NormalizeURI(path).compare(0, 13, "tidbfs+db:///") == 0 || SnapshotURI(path);
+	}
 	bool CanSeek() override { return true; }
 	bool OnDiskFile(FileHandle &) override { return false; }
 	bool IsManuallySet() override { return true; }
 	unique_ptr<FileHandle> OpenFile(const string &path, FileOpenFlags flags, optional_ptr<FileOpener> opener) override {
+		if (SnapshotURI(path)) {
+			if (flags.OpenForWriting() || flags.CreateFileIfNotExists() || flags.OverwriteExistingFile() || flags.Lock() == FileLockType::WRITE_LOCK)
+				throw IOException("Attach tidbfs+snapshot:/// with READ_ONLY");
+			if (SnapshotWAL(path)) {
+				if (flags.ReturnNullIfNotExists()) return nullptr;
+				throw IOException("Published checkpoints have no WAL");
+			}
+			auto client = Client(path, opener);
+			if (!client->fs->CloneSupported()) throw IOException("Server lacks session-guarded extent clone_v1 support");
+			// A replacement can retire the looked-up inode before open_ref.
+			// Retry only a definite ENOENT, never an ambiguous mutation result.
+			for (int attempt = 0; ; ++attempt) {
+				try {
+					drive9::OpenOptions options;
+					options.lock = drive9::Lock::Shared;
+					auto id = client->fs->Open(ExtentPath(path), options);
+					auto info = ExtentClient::Info(client->fs->Info(id));
+					info["handle"] = id;
+					return make_uniq<ExtentHandle>(*this, path, flags, client, info);
+				} catch (const drive9::Error &error) {
+					if (error.code == 2 && attempt < 2) continue;
+					throw IOException("Cannot open published checkpoint (publish it first): %s", error.what());
+				} catch (const std::exception &error) { throw IOException("tidbfs snapshot: %s", error.what()); }
+			}
+		}
 		auto config = ReadConfig(opener, path);
 		auto client = clients->Get(config);
 		if (flags.OpenForReading() && !flags.OpenForWriting() && flags.Lock() == FileLockType::NO_LOCK) {
@@ -286,10 +350,12 @@ class TiDBDatabaseFileSystem : public FileSystem {
 		return i.at("exists").get<bool>() && i.at("directory").get<bool>();
 	}
 	void CreateDirectory(const string &path, optional_ptr<FileOpener> opener) override {
+		RequireMutableURI(path);
 		if (!DirectoryExists(path, opener))
 			Client(path, opener)->Call({{"op", "mkdir"}, {"path", ExtentPath(path)}});
 	}
 	bool TryRemoveFile(const string &path, optional_ptr<FileOpener> opener) override {
+		RequireMutableURI(path);
 		if (!FileExists(path, opener))
 			return false;
 		Client(path, opener)->Call({{"op", "remove"}, {"path", ExtentPath(path)}});
@@ -309,6 +375,7 @@ class TiDBDatabaseFileSystem : public FileSystem {
 		return true;
 	}
 	void RemoveDirectory(const string &path, optional_ptr<FileOpener> opener) override {
+		RequireMutableURI(path);
 		vector<std::pair<string, bool>> entries;
 		ListFiles(path, [&](const string &name, bool dir) { entries.emplace_back(name, dir); }, opener.get());
 		for (auto &entry : entries) {
@@ -321,6 +388,7 @@ class TiDBDatabaseFileSystem : public FileSystem {
 		Client(path, opener)->Call({{"op", "remove"}, {"path", ExtentPath(path)}});
 	}
 	void MoveFile(const string &source, const string &target, optional_ptr<FileOpener> opener) override {
+		RequireMutableURI(source); RequireMutableURI(target);
 		auto a = ReadConfig(opener, source), b = ReadConfig(opener, target);
 		if (a.endpoint != b.endpoint || a.token != b.token)
 			throw IOException("Cannot move across filesystems");
@@ -332,3 +400,5 @@ class TiDBDatabaseFileSystem : public FileSystem {
 		return {OpenFileInfo(path)};
 	}
 };
+
+#include "snapshot_publish.hpp"

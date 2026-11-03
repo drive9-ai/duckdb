@@ -28,6 +28,21 @@ statement ok
 DROP SECRET publication_fs;
 
 statement error
+CALL tidbfs_publish(NULL);
+----
+Database cannot be NULL
+
+statement error
+CALL tidbfs_publish('missing');
+----
+not found
+
+statement error
+CALL tidbfs_publish('memory');
+----
+requires a writable native
+
+statement error
 CREATE SECRET invalid_fs (TYPE tidbfs, ENDPOINT 'https://fs.example.test');
 ----
 tidbfs secret requires ENDPOINT and TOKEN
