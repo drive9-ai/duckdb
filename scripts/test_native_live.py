@@ -6,6 +6,7 @@ server. No existing services, databases or filesystem credentials are used.
 """
 import argparse
 from collections import Counter
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -44,7 +45,13 @@ def main():
     parser.add_argument('--tidb-server', required=True)
     parser.add_argument('--fs-server', required=True)
     parser.add_argument('--fs-source', help='Also run relevant Go tests in this fs checkout')
+    parser.add_argument('--cpp-live-test', help='Reuse a matching, already built SDK live-test executable')
+    parser.add_argument('--native-only', action='store_true', help='Run selected native tests without the separate SDK API suite')
     parser.add_argument('--skip-restart', action='store_true')
+    parser.add_argument('--attach-benchmark', action='store_true', help='Run credential-free attach attribution instead of tests')
+    parser.add_argument('--baseline-extension', help='Compare a previously built baseline extension')
+    parser.add_argument('--bench-samples', type=int, default=10)
+    parser.add_argument('--bench-delay-ms', type=float, default=20)
     parser.add_argument('--quack', action='store_true', help='Also run the multi-client Quack integration suite')
     parser.add_argument('--quack-only', action='store_true', help='Run Quack integration instead of native_smoke.py')
     parser.add_argument('--log-dir', default=str(ROOT / 'build/native-live'))
@@ -147,10 +154,41 @@ def main():
                                    cwd=args.fs_source, env=test_env, stdout=output, stderr=output, check=True)
                 print('Go storage, isolation, protocol, range and schema regressions passed', flush=True)
             env.update(DRIVE9_BASE=endpoint, DRIVE9_API_KEY=token, TIDBFS_TEST_LOG_DIR=str(log_dir))
+            if args.attach_benchmark:
+                for delay in sorted({0, args.bench_delay_ms}):
+                    for label, extension in [('baseline', args.baseline_extension),
+                                             ('candidate', str(ROOT / 'build/tidbfs.duckdb_extension'))]:
+                        if not extension:
+                            continue
+                        subprocess.run(['python3', 'scripts/benchmark_attach.py', '--local',
+                                        '--region', 'loopback', '--label', label,
+                                        '--extension', extension, '--samples', str(args.bench_samples),
+                                        '--delay-ms', str(delay), '--output',
+                                        str(log_dir / f'attach-{label}-{delay:g}ms.json')],
+                                       cwd=ROOT, env=env, check=True)
+                        report_path = log_dir / f'attach-{label}-{delay:g}ms.json'
+                        report = json.loads(report_path.read_text())
+                        report['services'] = {
+                            name + '_binary_sha256': hashlib.sha256(Path(binary).read_bytes()).hexdigest()
+                            for name, binary in [('server', args.fs_server), ('tidb', args.tidb_server),
+                                                 ('rustfs', args.rustfs_server)] if binary}
+                        report_path.write_text(json.dumps(report, indent=2) + '\n')
+                    if args.baseline_extension:
+                        reports = [json.loads((log_dir / f'attach-{label}-{delay:g}ms.json').read_text())
+                                   for label in ('baseline', 'candidate')]
+                        def attach_requests(report):
+                            return next(row['requests_per_sample']['median'] for row in report['summary']
+                                        if row['mode'] == 'fresh_process' and row['stage'] == 'attach')
+                        if attach_requests(reports[1]) >= attach_requests(reports[0]):
+                            raise AssertionError('Candidate must reduce measured cold attach request count')
+                return
             cpp_env = env.copy()
             if os.environ.get('DRIVE9_CPP_SOURCE'):
                 cpp_env['DRIVE9_CPP_SOURCE'] = os.environ['DRIVE9_CPP_SOURCE']
-            subprocess.run(['python3', 'scripts/test_cpp.py', '--live'], cwd=ROOT, env=cpp_env, check=True)
+            cpp_command = ([str(Path(args.cpp_live_test).resolve())] if args.cpp_live_test
+                           else ['python3', 'scripts/test_cpp.py', '--live'])
+            if not args.native_only:
+                subprocess.run(cpp_command, cwd=ROOT, env=cpp_env, check=True)
             if not args.quack_only:
                 subprocess.run(['python3', 'scripts/native_smoke.py'] + args.tests, cwd=ROOT, env=env, check=True)
             if args.quack or args.quack_only:

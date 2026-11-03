@@ -276,6 +276,10 @@ locally. This adds neither distributed SQL execution nor concurrent database
 writer processes. Extent performance and failure behavior still require broader
 production validation; it is not a claim of complete DuckDB compatibility.
 
+See [native attach attribution](docs/native-attach-performance.md) for a
+credential-safe cold/warm benchmark, controlled request latency, and the
+instance/process boundary of existing session reuse.
+
 ## Quack SQL clients over shared storage
 
 DuckDB 2.0 workers can serve the attached filesystem database with the official
